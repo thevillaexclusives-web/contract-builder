@@ -8,6 +8,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { FontFamily } from '@tiptap/extension-font-family'
+import { Underline } from '@tiptap/extension-underline'
 import { useEffect, useImperativeHandle, forwardRef } from 'react'
 import type { JSONContent } from '@tiptap/core'
 import type { EditorProps, EditorRef } from '@/types/editor'
@@ -41,6 +42,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         TableCell,
         TextStyle,
         FontFamily,
+        Underline,
       ],
       content: content || {
         type: 'doc',

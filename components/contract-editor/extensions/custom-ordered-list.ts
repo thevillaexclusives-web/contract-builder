@@ -45,24 +45,14 @@ export const CustomOrderedList = OrderedList.extend({
     // node.attrs contains the actual stored attributes
     const listStyleType = node?.attrs?.listStyleType || 'decimal'
     
-    console.log('🎨 renderHTML called with:', {
-      nodeAttrs: node?.attrs,
-      HTMLAttributes,
-      computedListStyleType: listStyleType,
-    })
-    
     // Merge attributes, but override with our computed listStyleType
     // This ensures we use the node's actual stored value, not HTMLAttributes
-    const mergedAttrs = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
-      style: `list-style-type: ${listStyleType};`,
-      'data-list-style': listStyleType,
-    })
-    
-    console.log('🎨 Merged attributes:', mergedAttrs)
-    
     return [
       'ol',
-      mergedAttrs,
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        style: `list-style-type: ${listStyleType};`,
+        'data-list-style': listStyleType,
+      }),
       0,
     ]
   },

@@ -62,43 +62,19 @@ export default function ListStyleDropdown({ editor, isActive }: ListStyleDropdow
     (listStyleType: string) => {
       if (!editor) return
 
-      console.log('🎯 handleListStyle called with:', listStyleType)
-      console.log('📊 Current list active:', editor.isActive('orderedList'))
-      console.log('📊 Current attributes:', editor.getAttributes('orderedList'))
-
       if (editor.isActive('orderedList')) {
         // Update existing list style
-        console.log('🔄 Updating existing list style')
-        const result = editor.chain().focus().updateAttributes('orderedList', { listStyleType }).run()
-        console.log('✅ Update result:', result)
-        console.log('📊 New attributes:', editor.getAttributes('orderedList'))
+        editor.chain().focus().updateAttributes('orderedList', { listStyleType }).run()
       } else {
-        // Create new list with style using our custom command
-        console.log('🆕 Creating new list with style:', listStyleType)
-        
+        // Create new list with style
         // First toggle the list, then update attributes
-        // Use a microtask to ensure the list exists before updating
         const toggleResult = editor.chain().focus().toggleOrderedList().run()
-        console.log('✅ Toggle result:', toggleResult)
         
         if (toggleResult) {
-          // Use requestAnimationFrame to ensure DOM is updated
+          // Use requestAnimationFrame to ensure DOM is updated before updating attributes
           requestAnimationFrame(() => {
             if (editor.isActive('orderedList')) {
-              console.log('🔄 Updating attributes after list creation')
-              const updateResult = editor.chain().focus().updateAttributes('orderedList', { listStyleType }).run()
-              console.log('✅ Update result:', updateResult)
-              console.log('📊 New attributes:', editor.getAttributes('orderedList'))
-              
-              // Debug: Check the actual HTML output
-              setTimeout(() => {
-                const html = editor.getHTML()
-                console.log('📄 Editor HTML:', html)
-                const json = editor.getJSON()
-                console.log('📄 Editor JSON:', JSON.stringify(json, null, 2))
-              }, 100)
-            } else {
-              console.warn('⚠️ List is not active after toggle')
+              editor.chain().focus().updateAttributes('orderedList', { listStyleType }).run()
             }
           })
         }

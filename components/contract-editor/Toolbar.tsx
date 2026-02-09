@@ -6,6 +6,7 @@ import {
   Bold,
   Italic,
   Strikethrough,
+  Underline as UnderlineIcon,
   List,
   Heading1,
   Heading2,
@@ -85,6 +86,10 @@ export default function Toolbar({ editor }: ToolbarProps) {
     editor?.chain().focus().toggleStrike().run()
   }, [editor])
 
+  const handleUnderline = useCallback(() => {
+    editor?.chain().focus().toggleUnderline().run()
+  }, [editor])
+
   const handleHeading = useCallback(
     (level: 1 | 2 | 3) => () => {
       editor?.chain().focus().toggleHeading({ level }).run()
@@ -123,6 +128,7 @@ export default function Toolbar({ editor }: ToolbarProps) {
     bold: editor.isActive('bold'),
     italic: editor.isActive('italic'),
     strike: editor.isActive('strike'),
+    underline: editor.isActive('underline'),
     heading1: editor.isActive('heading', { level: 1 }),
     heading2: editor.isActive('heading', { level: 2 }),
     heading3: editor.isActive('heading', { level: 3 }),
@@ -144,6 +150,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
       </ToolbarButton>
       <ToolbarButton onClick={handleStrike} isActive={activeStates.strike} title="Strikethrough">
         <Strikethrough className="w-4 h-4" />
+      </ToolbarButton>
+      <ToolbarButton onClick={handleUnderline} isActive={activeStates.underline} title="Underline">
+        <UnderlineIcon className="w-4 h-4" />
       </ToolbarButton>
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
