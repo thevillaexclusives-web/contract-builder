@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
-import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileCheck } from 'lucide-react'
+import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -23,7 +23,6 @@ export default function ContractEditPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isFinalizing, setIsFinalizing] = useState(false)
   
   // Auto-save debounce
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -160,38 +159,6 @@ export default function ContractEditPage() {
 
   const handleManualSave = () => {
     saveContract(true)
-  }
-
-  const handleFinalize = async () => {
-    if (!confirm('Are you sure you want to finalize this contract? Finalized contracts cannot be edited.')) {
-      return
-    }
-
-    try {
-      setIsFinalizing(true)
-      const response = await fetch(`/api/contracts/${contractId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: 'final',
-          finalized_at: new Date().toISOString(),
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to finalize contract')
-      }
-
-      const result = await response.json()
-      setContract(result.data)
-      alert('Contract finalized successfully!')
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to finalize contract')
-    } finally {
-      setIsFinalizing(false)
-    }
   }
 
   const handleDelete = async () => {
@@ -332,25 +299,14 @@ export default function ContractEditPage() {
                 </button>
 
                 <button
-                  onClick={handleFinalize}
-                  disabled={isFinalizing}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <FileCheck className="w-4 h-4" />
-                  {isFinalizing ? 'Finalizing...' : 'Finalize'}
+                  <Trash2 className="w-4 h-4" />
+                  {isDeleting ? 'Deleting...' : 'Delete'}
                 </button>
               </>
-            )}
-
-            {!isFinalized && (
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Trash2 className="w-4 h-4" />
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
             )}
           </div>
         </div>
