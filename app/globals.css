@@ -71,6 +71,11 @@
 /* TipTap Editor Styles */
 .ProseMirror {
   outline: none;
+  font-size: 16px; /* Default font size */
+}
+
+.ProseMirror p {
+  font-size: 16px; /* Default paragraph font size */
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {

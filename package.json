@@ -18,6 +18,8 @@
     "@tiptap/extension-table-row": "^2.8.0",
     "@tiptap/extension-text-style": "^2.8.0",
     "@tiptap/extension-underline": "^2.8.0",
+    "@tiptap/extension-text-align": "^2.8.0",
+    "@tiptap/extension-font-size": "^2.8.0",
     "@tiptap/react": "^2.8.0",
     "@tiptap/starter-kit": "^2.8.0",
     "class-variance-authority": "^0.7.1",

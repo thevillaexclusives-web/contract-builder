@@ -17,13 +17,15 @@ import {
   Table,
 } from 'lucide-react'
 import ListStyleDropdown from './ListStyleDropdown'
+import TextAlignDropdown from './TextAlignDropdown'
+import FontSizeDropdown from './FontSizeDropdown'
 
 interface ToolbarProps {
   editor: Editor | null
 }
 
 // Memoized Button component to prevent unnecessary re-renders
-const ToolbarButton = ({
+export const ToolbarButton = ({
   onClick,
   isActive = false,
   disabled = false,
@@ -156,6 +158,14 @@ export default function Toolbar({ editor }: ToolbarProps) {
       </ToolbarButton>
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
+
+      {/* Font Controls */}
+      <FontSizeDropdown editor={editor} />
+
+      <div className="w-px h-6 bg-gray-300 mx-1" />
+
+      {/* Text Alignment */}
+      <TextAlignDropdown editor={editor} />
 
       {/* Headings */}
       <ToolbarButton onClick={handleHeading(1)} isActive={activeStates.heading1} title="Heading 1">

@@ -9,6 +9,8 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { FontFamily } from '@tiptap/extension-font-family'
 import { Underline } from '@tiptap/extension-underline'
+import { TextAlign } from '@tiptap/extension-text-align'
+import { FontSize } from '@tiptap/extension-font-size'
 import { useEffect, useImperativeHandle, forwardRef } from 'react'
 import type { JSONContent } from '@tiptap/core'
 import type { EditorProps, EditorRef } from '@/types/editor'
@@ -43,6 +45,10 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         TextStyle,
         FontFamily,
         Underline,
+        TextAlign.configure({
+          types: ['heading', 'paragraph'],
+        }),
+        FontSize,
       ],
       content: content || {
         type: 'doc',
@@ -61,6 +67,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       editorProps: {
         attributes: {
           class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-xl mx-auto focus:outline-none min-h-[500px] p-4',
+          style: 'font-size: 16px;',
         },
       },
     })

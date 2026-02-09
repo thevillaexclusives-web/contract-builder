@@ -12,12 +12,6 @@ export default function NewTemplatePage() {
     content: [
       {
         type: 'paragraph',
-        content: [
-          {
-            type: 'text',
-            text: 'Start creating your template...',
-          },
-        ],
       },
     ],
   })
