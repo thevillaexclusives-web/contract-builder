@@ -356,6 +356,10 @@ function mapOrderedList(node: JSONContent): Content | Content[] {
           } else if (para) {
             itemContent.push(para)
           }
+        } else if (child.type === 'pageBreak') {
+          // Page break inside list item - this shouldn't happen, but handle it gracefully
+          // Extract it and add as a separate content block after this list
+          nestedListsAfterItems.push({ text: '', pageBreak: 'after' })
         } else if (child.type === 'bulletList' || child.type === 'orderedList') {
           // Nested list - extract and add separately with indentation
           const nested = mapNode(child)
@@ -608,6 +612,10 @@ function mapNode(node: JSONContent): Content | Content[] | null {
       
     case 'field':
       return mapField(node)
+      
+    case 'pageBreak':
+      // Page break in PDFMake
+      return { text: '', pageBreak: 'after' }
       
     case 'hardBreak':
       return { text: '\n' }

@@ -15,6 +15,7 @@ import {
   Undo,
   Redo,
   Table,
+  FileText,
 } from 'lucide-react'
 import ListStyleDropdown from './ListStyleDropdown'
 import TextAlignDropdown from './TextAlignDropdown'
@@ -112,6 +113,10 @@ export default function Toolbar({ editor }: ToolbarProps) {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   }, [editor])
 
+  const handlePageBreak = useCallback(() => {
+    editor?.chain().focus().setPageBreak().run()
+  }, [editor])
+
   const handleUndo = useCallback(() => {
     editor?.chain().focus().undo().run()
   }, [editor])
@@ -199,6 +204,13 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
       {/* Field Insert */}
       <FieldInsertDropdown editor={editor} />
+
+      <div className="w-px h-6 bg-gray-300 mx-1" />
+
+      {/* Page Break */}
+      <ToolbarButton onClick={handlePageBreak} title="Insert Page Break (Ctrl+Enter)">
+        <FileText className="w-4 h-4" />
+      </ToolbarButton>
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
 

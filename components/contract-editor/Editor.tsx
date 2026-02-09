@@ -17,6 +17,7 @@ import type { EditorProps, EditorRef } from '@/types/editor'
 import Toolbar from './Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
+import { PageBreak } from './extensions/page-break'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -51,6 +52,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         }),
         FontSize,
         FieldNode, // Custom field node for fillable fields
+        PageBreak, // Page break support
       ],
       content: content || {
         type: 'doc',
@@ -170,9 +172,11 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     }
 
     return (
-      <div className={`border rounded-lg bg-white ${className}`}>
-        {showToolbar && <Toolbar editor={editor} />}
-        <EditorContent editor={editor} />
+      <div className={`editor-container ${className}`}>
+        <div className="border rounded-lg bg-white">
+          {showToolbar && <Toolbar editor={editor} />}
+          <EditorContent editor={editor} />
+        </div>
       </div>
     )
   }
