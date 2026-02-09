@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import type { ContractInsert } from '@/types/contract'
 
 export async function GET() {
   try {
@@ -15,8 +16,9 @@ export async function GET() {
 
     return NextResponse.json({ data })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to fetch contracts' },
+      { error: 'Failed to fetch contracts', details: errorMessage },
       { status: 500 }
     )
   }
@@ -25,7 +27,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    const body = await request.json()
+    const body: Omit<ContractInsert, 'created_by'> = await request.json()
 
     const {
       data: { user },
@@ -48,8 +50,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to create contract' },
+      { error: 'Failed to create contract', details: errorMessage },
       { status: 500 }
     )
   }

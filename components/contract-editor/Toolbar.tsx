@@ -7,7 +7,6 @@ import {
   Italic,
   Strikethrough,
   List,
-  ListOrdered,
   Heading1,
   Heading2,
   Heading3,
@@ -16,6 +15,7 @@ import {
   Redo,
   Table,
 } from 'lucide-react'
+import ListStyleDropdown from './ListStyleDropdown'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -71,65 +71,54 @@ export default function Toolbar({ editor }: ToolbarProps) {
     }
   }, [editor])
 
-  if (!editor) {
-    return null
-  }
-
   // Memoize command handlers to prevent recreation on every render
+  // All hooks must be called before any early returns
   const handleBold = useCallback(() => {
-    editor.chain().focus().toggleBold().run()
+    editor?.chain().focus().toggleBold().run()
   }, [editor])
 
   const handleItalic = useCallback(() => {
-    editor.chain().focus().toggleItalic().run()
+    editor?.chain().focus().toggleItalic().run()
   }, [editor])
 
   const handleStrike = useCallback(() => {
-    editor.chain().focus().toggleStrike().run()
+    editor?.chain().focus().toggleStrike().run()
   }, [editor])
 
   const handleHeading = useCallback(
     (level: 1 | 2 | 3) => () => {
-      editor.chain().focus().toggleHeading({ level }).run()
+      editor?.chain().focus().toggleHeading({ level }).run()
     },
     [editor]
   )
 
   const handleBulletList = useCallback(() => {
-    editor.chain().focus().toggleBulletList().run()
+    editor?.chain().focus().toggleBulletList().run()
   }, [editor])
 
-  const handleOrderedList = useCallback(
-    (listStyleType: string) => () => {
-      if (editor.isActive('orderedList')) {
-        editor.chain().focus().updateAttributes('orderedList', { listStyleType }).run()
-      } else {
-        // Create list and set style in one chain
-        editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { listStyleType }).run()
-      }
-    },
-    [editor]
-  )
-
   const handleBlockquote = useCallback(() => {
-    editor.chain().focus().toggleBlockquote().run()
+    editor?.chain().focus().toggleBlockquote().run()
   }, [editor])
 
   const handleInsertTable = useCallback(() => {
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+    editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   }, [editor])
 
   const handleUndo = useCallback(() => {
-    editor.chain().focus().undo().run()
+    editor?.chain().focus().undo().run()
   }, [editor])
 
   const handleRedo = useCallback(() => {
-    editor.chain().focus().redo().run()
+    editor?.chain().focus().redo().run()
   }, [editor])
+
+  // Early return AFTER all hooks
+  if (!editor) {
+    return null
+  }
 
   // Calculate active states - recalculated on every render
   // The useEffect above ensures this component re-renders on editor state changes
-  const orderedListAttrs = editor.getAttributes('orderedList')
   const activeStates = {
     bold: editor.isActive('bold'),
     italic: editor.isActive('italic'),
@@ -139,13 +128,6 @@ export default function Toolbar({ editor }: ToolbarProps) {
     heading3: editor.isActive('heading', { level: 3 }),
     bulletList: editor.isActive('bulletList'),
     orderedList: editor.isActive('orderedList'),
-    orderedListDecimal:
-      editor.isActive('orderedList') &&
-      (!orderedListAttrs.listStyleType || orderedListAttrs.listStyleType === 'decimal'),
-    orderedListRoman:
-      editor.isActive('orderedList') && orderedListAttrs.listStyleType === 'upper-roman',
-    orderedListAlpha:
-      editor.isActive('orderedList') && orderedListAttrs.listStyleType === 'upper-alpha',
     blockquote: editor.isActive('blockquote'),
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
@@ -183,27 +165,7 @@ export default function Toolbar({ editor }: ToolbarProps) {
       <ToolbarButton onClick={handleBulletList} isActive={activeStates.bulletList} title="Bullet List">
         <List className="w-4 h-4" />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={handleOrderedList('decimal')}
-        isActive={activeStates.orderedListDecimal}
-        title="Numbered List (1, 2, 3)"
-      >
-        <ListOrdered className="w-4 h-4" />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={handleOrderedList('upper-roman')}
-        isActive={activeStates.orderedListRoman}
-        title="Roman Numerals (I, II, III)"
-      >
-        <span className="text-xs font-semibold">I</span>
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={handleOrderedList('upper-alpha')}
-        isActive={activeStates.orderedListAlpha}
-        title="Letters (A, B, C)"
-      >
-        <span className="text-xs font-semibold">A</span>
-      </ToolbarButton>
+      <ListStyleDropdown editor={editor} isActive={activeStates.orderedList} />
       <ToolbarButton onClick={handleBlockquote} isActive={activeStates.blockquote} title="Quote">
         <Quote className="w-4 h-4" />
       </ToolbarButton>

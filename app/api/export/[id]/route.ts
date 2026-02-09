@@ -3,9 +3,10 @@ import { NextResponse } from 'next/server'
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -20,7 +21,7 @@ export async function POST(
     const { data: contract, error } = await supabase
       .from('contracts')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .is('deleted_at', null)
       .single()
 
@@ -31,7 +32,7 @@ export async function POST(
     // For now, return placeholder
     return NextResponse.json({
       message: 'PDF export - to be implemented',
-      contractId: params.id,
+      contractId: id,
     })
   } catch (error) {
     return NextResponse.json(

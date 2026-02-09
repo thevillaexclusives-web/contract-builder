@@ -23,12 +23,11 @@ export const CustomOrderedList = OrderedList.extend({
           return style || 'decimal'
         },
         renderHTML: (attributes) => {
-          if (!attributes.listStyleType || attributes.listStyleType === 'decimal') {
-            return {}
-          }
+          // Always include the style attribute, even for decimal
+          const listStyleType = attributes.listStyleType || 'decimal'
           return {
-            'data-list-style': attributes.listStyleType,
-            style: `list-style-type: ${attributes.listStyleType};`,
+            'data-list-style': listStyleType,
+            style: `list-style-type: ${listStyleType};`,
           }
         },
       },
@@ -38,39 +37,32 @@ export const CustomOrderedList = OrderedList.extend({
   addCommands() {
     return {
       ...this.parent?.(),
-      /**
-       * Toggle ordered list with a specific style type
-       * Usage: editor.chain().focus().toggleOrderedListWithStyle('upper-roman').run()
-       */
-      toggleOrderedListWithStyle: (listStyleType: string = 'decimal') => {
-        return ({ chain }) => {
-          if (this.editor.isActive('orderedList')) {
-            // If already an ordered list, just update the style
-            return chain()
-              .focus()
-              .updateAttributes('orderedList', { listStyleType })
-              .run()
-          } else {
-            // Create new ordered list with specified style
-            return chain()
-              .focus()
-              .toggleOrderedList()
-              .updateAttributes('orderedList', { listStyleType })
-              .run()
-          }
-        }
-      },
     }
   },
 
-  renderHTML({ HTMLAttributes }) {
-    const listStyleType = HTMLAttributes.listStyleType || 'decimal'
+  renderHTML({ HTMLAttributes, node }) {
+    // Get listStyleType from node attributes (the source of truth)
+    // node.attrs contains the actual stored attributes
+    const listStyleType = node?.attrs?.listStyleType || 'decimal'
+    
+    console.log('🎨 renderHTML called with:', {
+      nodeAttrs: node?.attrs,
+      HTMLAttributes,
+      computedListStyleType: listStyleType,
+    })
+    
+    // Merge attributes, but override with our computed listStyleType
+    // This ensures we use the node's actual stored value, not HTMLAttributes
+    const mergedAttrs = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+      style: `list-style-type: ${listStyleType};`,
+      'data-list-style': listStyleType,
+    })
+    
+    console.log('🎨 Merged attributes:', mergedAttrs)
+    
     return [
       'ol',
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
-        style: `list-style-type: ${listStyleType};`,
-        'data-list-style': listStyleType,
-      }),
+      mergedAttrs,
       0,
     ]
   },

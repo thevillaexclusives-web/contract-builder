@@ -1,17 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import type { ContractTemplateUpdate } from '@/types/contract'
+import type { Database } from '@/types/database'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const { data, error } = await supabase
       .from('contract_templates')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .is('deleted_at', null)
       .single()
 
@@ -28,11 +31,12 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
-    const body = await request.json()
+    const body: ContractTemplateUpdate = await request.json()
 
     const {
       data: { user },
@@ -44,8 +48,8 @@ export async function PUT(
 
     const { data, error } = await supabase
       .from('contract_templates')
-      .update(body)
-      .eq('id', params.id)
+      .update(body as Database['public']['Tables']['contract_templates']['Update'])
+      .eq('id', id)
       .eq('created_by', user.id)
       .select()
       .single()
@@ -63,9 +67,10 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -78,8 +83,8 @@ export async function DELETE(
 
     const { error } = await supabase
       .from('contract_templates')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', params.id)
+      .update({ deleted_at: new Date().toISOString() } as Database['public']['Tables']['contract_templates']['Update'])
+      .eq('id', id)
       .eq('created_by', user.id)
 
     if (error) throw error
