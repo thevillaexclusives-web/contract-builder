@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
-import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown } from 'lucide-react'
+import { Save, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown } from 'lucide-react'
 import Link from 'next/link'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -22,7 +22,6 @@ export default function ContractEditPage() {
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   
   // Auto-save debounce
@@ -160,28 +159,6 @@ export default function ContractEditPage() {
 
   const handleManualSave = () => {
     saveContract(true)
-  }
-
-  const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to delete "${contractName}"? This action cannot be undone.`)) {
-      return
-    }
-
-    try {
-      setIsDeleting(true)
-      const response = await fetch(`/api/contracts/${contractId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete contract')
-      }
-
-      router.push('/contracts')
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete contract')
-      setIsDeleting(false)
-    }
   }
 
   const handleContentChange = (newContent: JSONContent) => {
@@ -323,10 +300,30 @@ export default function ContractEditPage() {
               </div>
             )}
 
+            {!isFinalized && (
+              <button
+                onClick={handleManualSave}
+                className="px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={saveStatus === 'saving'}
+              >
+                {saveStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Save
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={handleExportPDF}
               disabled={isExporting}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isExporting ? (
                 <>
@@ -340,27 +337,6 @@ export default function ContractEditPage() {
                 </>
               )}
             </button>
-
-            {!isFinalized && (
-              <>
-                <button
-                  onClick={handleManualSave}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  Save
-                </button>
-
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {isDeleting ? 'Deleting...' : 'Delete'}
-                </button>
-              </>
-            )}
           </div>
         </div>
       </div>
