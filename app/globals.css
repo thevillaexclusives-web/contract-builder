@@ -273,17 +273,22 @@
   counter-reset: page;
 }
 
+/* TipTap EditorContent wrapper div - takes full width */
+.page-content-wrapper > div {
+  width: 100%;
+}
+
 /* Page container - wraps the editor content */
 .editor-container .ProseMirror {
-  /* Responsive width: use 85% of container, max A4 width (794px = ~210mm) */
-  width: min(85%, 794px);
-  max-width: 794px;
+  /* Responsive width: 100% of parent container */
+  width: 100%;
+  max-width: 100%;
   /* Maintain A4 aspect ratio (width:height = 1:1.414) */
   /* Height is automatically calculated: width × 1.414 */
   aspect-ratio: 1 / 1.414;
   /* Don't set min-height - it conflicts with aspect-ratio */
   margin: 0;
-  padding: 10mm;
+  padding: 22mm;
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   position: relative;
