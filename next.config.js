@@ -5,6 +5,8 @@ const nextConfig = {
       bodySizeLimit: '2mb', // For large contract JSON
     },
   },
+  // Explicitly use webpack (not turbopack) to avoid build issues
+  turbopack: {},
   webpack: (config, { isServer }) => {
     // Disable canvas for browser (not needed for PDF generation)
     config.resolve.alias.canvas = false;
