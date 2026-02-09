@@ -19,7 +19,7 @@ interface HeaderProps {
 
 export default function Header({ userEmail, userName }: HeaderProps) {
   const [isMobile, setIsMobile] = useState(false)
-  const legacyAppUrl = process.env.NEXT_PUBLIC_LEGACY_APP_URL || 'https://app.thevillaexclusive.com/'
+  const legacyAppUrl = process.env.NEXT_PUBLIC_LEGACY_APP_URL || 'https://app.thevillaexclusive.com'
 
   useEffect(() => {
     const checkMobile = () => {
