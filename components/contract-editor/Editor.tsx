@@ -16,6 +16,7 @@ import type { JSONContent } from '@tiptap/core'
 import type { EditorProps, EditorRef } from '@/types/editor'
 import Toolbar from './Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
+import { FieldNode } from './extensions/field-node'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -49,6 +50,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           types: ['heading', 'paragraph'],
         }),
         FontSize,
+        FieldNode, // Custom field node for fillable fields
       ],
       content: content || {
         type: 'doc',
@@ -70,7 +72,20 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           style: 'font-size: 16px;',
         },
       },
+      // Store mode in editor storage for field nodes to access
+      onBeforeCreate: ({ editor }) => {
+        editor.storage.mode = mode
+      },
     })
+
+    // Update mode in storage when it changes
+    useEffect(() => {
+      if (editor) {
+        editor.storage.mode = mode
+        // Force update of field nodes by triggering a transaction
+        editor.view.dispatch(editor.state.tr)
+      }
+    }, [editor, mode])
 
     // Update content when prop changes (but not on every render)
     useEffect(() => {

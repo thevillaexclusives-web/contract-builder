@@ -19,6 +19,7 @@ import {
 import ListStyleDropdown from './ListStyleDropdown'
 import TextAlignDropdown from './TextAlignDropdown'
 import FontSizeDropdown from './FontSizeDropdown'
+import FieldInsertDropdown from './FieldInsertDropdown'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -195,6 +196,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
       <ToolbarButton onClick={handleInsertTable} title="Insert Table">
         <Table className="w-4 h-4" />
       </ToolbarButton>
+
+      {/* Field Insert */}
+      <FieldInsertDropdown editor={editor} />
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
 
