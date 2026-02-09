@@ -184,21 +184,37 @@
   border-bottom: 1px solid #333;
   outline: none;
   background: transparent;
-  min-width: 100px;
+  min-width: 120px;
+  max-width: 300px;
   padding: 2px 4px;
   font-size: inherit;
   font-family: inherit;
   color: inherit;
+  cursor: text;
 }
 
 .ProseMirror .field-node .field-input:focus {
   border-bottom-color: #0066cc;
   border-bottom-width: 2px;
+  outline: none;
 }
 
 .ProseMirror .field-node .field-input::placeholder {
   color: #999;
   opacity: 0.7;
+}
+
+/* Contract mode: Make editor non-editable but allow field inputs */
+.ProseMirror[contenteditable="false"] {
+  cursor: default;
+}
+
+.ProseMirror[contenteditable="false"] .field-node {
+  cursor: pointer;
+}
+
+.ProseMirror[contenteditable="false"] .field-node input {
+  cursor: text;
 }
 
 /* Readonly mode: Plain text */

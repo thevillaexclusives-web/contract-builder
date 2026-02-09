@@ -30,28 +30,32 @@ export default function NewTemplatePage() {
 
     setSaving(true)
     try {
-      // TODO: Save template to API
       const response = await fetch('/api/templates', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: templateName,
-          content: content,
+          name: templateName.trim(),
+          description: null,
+          content: content || {
+            type: 'doc',
+            content: [{ type: 'paragraph' }],
+          },
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to save template')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to save template')
       }
 
-      const data = await response.json()
+      const result = await response.json()
       // Redirect to edit page after creation
-      router.push(`/templates/${data.data.id}/edit`)
+      router.push(`/templates/${result.data.id}/edit`)
     } catch (error) {
       console.error('Error saving template:', error)
-      alert('Failed to save template. Please try again.')
+      alert(error instanceof Error ? error.message : 'Failed to save template. Please try again.')
     } finally {
       setSaving(false)
     }

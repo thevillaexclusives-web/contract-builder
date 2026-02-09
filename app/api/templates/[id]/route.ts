@@ -11,11 +11,13 @@ export async function GET(
     const { id } = await params
     const supabase = await createClient()
 
+    // Only allow access to templates created in the new app
     const { data, error } = await supabase
       .from('contract_templates')
       .select('*')
       .eq('id', id)
       .is('deleted_at', null)
+      .eq('variables->>created_in_new_app', 'true') // Filter by tag
       .single()
 
     if (error) throw error
@@ -46,11 +48,27 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure variables tag is preserved when updating
+    // Only merge if variables is provided, otherwise keep existing
+    const updateData: ContractTemplateUpdate = body.variables !== undefined
+      ? {
+          ...body,
+          variables: {
+            ...(body.variables && typeof body.variables === 'object' && !Array.isArray(body.variables)
+              ? body.variables
+              : {}),
+            app_version: 'nextjs',
+            created_in_new_app: true,
+          },
+        }
+      : body
+
     const { data, error } = await supabase
       .from('contract_templates')
-      .update(body as Database['public']['Tables']['contract_templates']['Update'])
+      .update(updateData as Database['public']['Tables']['contract_templates']['Update'])
       .eq('id', id)
       .eq('created_by', user.id)
+      .eq('variables->>created_in_new_app', 'true') // Only allow updating new app templates
       .select()
       .single()
 
@@ -86,6 +104,7 @@ export async function DELETE(
       .update({ deleted_at: new Date().toISOString() } as Database['public']['Tables']['contract_templates']['Update'])
       .eq('id', id)
       .eq('created_by', user.id)
+      .eq('variables->>created_in_new_app', 'true') // Only allow deleting new app templates
 
     if (error) throw error
 

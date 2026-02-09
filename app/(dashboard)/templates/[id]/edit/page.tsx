@@ -1,57 +1,303 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor/Editor'
 import type { JSONContent } from '@tiptap/core'
+import type { ContractTemplate } from '@/types/contract'
+import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import Link from 'next/link'
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function TemplateEditPage() {
   const params = useParams()
+  const router = useRouter()
   const templateId = params.id as string
+  
+  const [template, setTemplate] = useState<ContractTemplate | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [templateDescription, setTemplateDescription] = useState('')
   const [content, setContent] = useState<JSONContent | undefined>(undefined)
   const [loading, setLoading] = useState(true)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Auto-save debounce
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastSavedContentRef = useRef<string>('')
 
-  // Load template content (placeholder for now)
+  // Load template
   useEffect(() => {
-    // TODO: Fetch template from API
-    setLoading(false)
-    setContent({
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          content: [
-            {
-              type: 'text',
-              text: 'Start editing your template...',
-            },
-          ],
-        },
-      ],
-    })
+    loadTemplate()
   }, [templateId])
+
+  const loadTemplate = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await fetch(`/api/templates/${templateId}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Template not found')
+        }
+        throw new Error('Failed to load template')
+      }
+
+      const result = await response.json()
+      const loadedTemplate = result.data as ContractTemplate
+      
+      setTemplate(loadedTemplate)
+      setTemplateName(loadedTemplate.name)
+      setTemplateDescription(loadedTemplate.description || '')
+      
+      // Parse content from JSONB
+      const templateContent = loadedTemplate.content as JSONContent
+      setContent(templateContent || {
+        type: 'doc',
+        content: [{ type: 'paragraph' }],
+      })
+      
+      // Store initial content for comparison
+      lastSavedContentRef.current = JSON.stringify(templateContent)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load template')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Save template
+  const saveTemplate = useCallback(async (showStatus = true) => {
+    if (!template) return
+
+    try {
+      if (showStatus) {
+        setSaveStatus('saving')
+      }
+
+      const response = await fetch(`/api/templates/${templateId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: templateName,
+          description: templateDescription || null,
+          content: content,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save template')
+      }
+
+      const result = await response.json()
+      setTemplate(result.data)
+      lastSavedContentRef.current = JSON.stringify(content)
+      
+      if (showStatus) {
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      }
+    } catch (err) {
+      if (showStatus) {
+        setSaveStatus('error')
+        setTimeout(() => setSaveStatus('idle'), 3000)
+      }
+      console.error('Error saving template:', err)
+    }
+  }, [template, templateId, templateName, templateDescription, content])
+
+  // Auto-save on content change (debounced)
+  useEffect(() => {
+    if (!template || loading) return
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    // Check if content actually changed
+    const currentContent = JSON.stringify(content)
+    if (currentContent === lastSavedContentRef.current) {
+      return
+    }
+
+    // Set new timeout for auto-save (2 seconds)
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTemplate(false) // Silent save (no status indicator)
+    }, 2000)
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [content, template, loading, saveTemplate])
+
+  // Auto-save on name/description change (debounced)
+  useEffect(() => {
+    if (!template || loading) return
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTemplate(false)
+    }, 2000)
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [templateName, templateDescription, template, loading, saveTemplate])
+
+  const handleManualSave = () => {
+    saveTemplate(true)
+  }
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete "${templateName}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      const response = await fetch(`/api/templates/${templateId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete template')
+      }
+
+      router.push('/templates')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete template')
+      setIsDeleting(false)
+    }
+  }
 
   const handleContentChange = (newContent: JSONContent) => {
     setContent(newContent)
-    // TODO: Auto-save or debounced save
-    // Content changed - will implement auto-save later
   }
 
   if (loading) {
     return (
       <div className="container mx-auto py-8">
-        <div className="text-center">Loading template...</div>
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-600">Loading template...</p>
+        </div>
       </div>
     )
   }
 
+  if (error) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold text-red-900 mb-1">Error Loading Template</h3>
+                <p className="text-red-700">{error}</p>
+                <Link
+                  href="/templates"
+                  className="mt-4 inline-block text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  ← Back to Templates
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!template) {
+    return null
+  }
+
   return (
-    <div className="container mx-auto py-8 max-w-5xl">
+    <div className="container mx-auto py-8 px-4 max-w-5xl">
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Edit Template</h1>
-        <p className="text-muted-foreground">Template ID: {templateId}</p>
+        <Link
+          href="/templates"
+          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Templates
+        </Link>
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Template Name"
+              className="text-3xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0 w-full mb-2"
+            />
+            <input
+              type="text"
+              value={templateDescription}
+              onChange={(e) => setTemplateDescription(e.target.value)}
+              placeholder="Add a description (optional)"
+              className="text-sm text-gray-500 bg-transparent border-none outline-none focus:ring-0 p-0 w-full"
+            />
+          </div>
+
+          {/* Save Status & Actions */}
+          <div className="flex items-center gap-3">
+            {saveStatus === 'saving' && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving...</span>
+              </div>
+            )}
+            {saveStatus === 'saved' && (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Saved</span>
+              </div>
+            )}
+            {saveStatus === 'error' && (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <AlertCircle className="w-4 h-4" />
+                <span>Save failed</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleManualSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              Save
+            </button>
+
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
+        </div>
       </div>
 
+      {/* Editor */}
       <div className="space-y-4">
         <Editor
           content={content}

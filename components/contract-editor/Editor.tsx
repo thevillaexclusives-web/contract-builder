@@ -60,7 +60,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           },
         ],
       },
-      editable,
+      editable: mode === 'contract' ? false : editable, // Contract mode: non-editable except fields
       onUpdate: ({ editor }) => {
         if (onChange) {
           onChange(editor.getJSON())
@@ -70,7 +70,63 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         attributes: {
           class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-xl mx-auto focus:outline-none min-h-[500px] p-4',
           style: 'font-size: 16px;',
+          ...(mode === 'contract' ? { 'data-contract-mode': 'true' } : {}),
         },
+        // In contract mode, prevent editing except on field inputs
+        handleDOMEvents: mode === 'contract' ? {
+          mousedown: (view, event) => {
+            const target = event.target as HTMLElement
+            // Always allow clicks on field inputs
+            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
+              return false // Let the event through to the input
+            }
+            // Allow clicking on field nodes to focus their inputs
+            const fieldNode = target.closest('.field-node')
+            if (fieldNode) {
+              const input = fieldNode.querySelector('input') as HTMLInputElement
+              if (input) {
+                event.preventDefault()
+                event.stopPropagation()
+                setTimeout(() => input.focus(), 0)
+                return true
+              }
+            }
+            // Prevent all other interactions
+            event.preventDefault()
+            return true
+          },
+          click: (view, event) => {
+            const target = event.target as HTMLElement
+            // Allow clicks on field inputs
+            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
+              return false
+            }
+            // Allow clicks on field nodes
+            if (target.closest('.field-node')) {
+              return false
+            }
+            // Prevent other clicks
+            return true
+          },
+          keydown: (view, event) => {
+            const target = event.target as HTMLElement
+            // Always allow keyboard events on field inputs
+            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
+              return false
+            }
+            // Prevent all other keyboard events
+            return true
+          },
+          beforeinput: (view, event) => {
+            const target = event.target as HTMLElement
+            // Allow input events on field inputs
+            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
+              return false
+            }
+            // Prevent all other input events
+            return true
+          },
+        } : undefined,
       },
       // Store mode in editor storage for field nodes to access
       onBeforeCreate: ({ editor }) => {
