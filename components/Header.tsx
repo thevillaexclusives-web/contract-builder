@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, User, LogOut, Building2 } from 'lucide-react'
+import { User, LogOut, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import {
   DropdownMenu,
@@ -47,16 +47,8 @@ export default function Header({ userEmail, userName }: HeaderProps) {
     <nav className="border-b bg-black">
       <div className="container mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
-          {/* Left side - Back button and Brand */}
-          <div className="flex items-center gap-4">
-            <a
-              href={`${legacyAppUrl}/v1/pms/dashboard`}
-              className="flex items-center gap-2 text-gray-300 hover:text-blue-400 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">Back to PMS</span>
-            </a>
-            <div className="h-6 w-px bg-gray-600" />
+          {/* Left side - Brand */}
+          <div className="flex items-center">
             <h1 className="text-lg sm:text-xl font-medium text-gray-300">
               Contract Builder V2
             </h1>
