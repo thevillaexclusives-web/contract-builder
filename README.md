@@ -1,55 +1,80 @@
-# Contract Builder - New Implementation
+# Contract Editor
 
-This directory contains the new contract builder implementation, rebuilt from scratch to avoid the anti-patterns and architectural issues identified in the existing implementation.
+A Next.js application for building and managing legal contracts with TipTap editor and PDF export.
 
-## Directory Structure
+## Getting Started
 
-```
-src/
-├── pages/
-│   ├── contract-builder/     # New contract builder pages
-│   │   ├── ANTI_PATTERNS.md  # Anti-patterns to avoid
-│   │   ├── PROJECT_GOALS.md  # Original goals and purpose
-│   │   └── README.md          # This file
-│   ├── pms/                   # Existing contract builder (legacy)
-│   └── crm/                   # CRM pages
-└── components/
-    ├── contract-builder/      # New contract builder components
-    ├── pms/                   # Existing contract builder components (legacy)
-    └── crm/                   # CRM components
+### Prerequisites
+
+- Node.js 18+
+- yarn package manager
+- Supabase project with contract builder tables
+
+### Installation
+
+1. Install dependencies:
+```bash
+yarn install
 ```
 
-## Purpose
+2. Set up environment variables:
+```bash
+cp .env.example .env.local
+# Edit .env.local with your Supabase credentials
+```
 
-This is a complete rewrite of the contract builder to address:
+3. Initialize shadcn/ui:
+```bash
+npx shadcn@latest init
+npx shadcn@latest add button card input label dialog dropdown-menu table toast form
+```
 
-- Complex state management issues
-- Overuse of useEffect hooks
-- Prop drilling and nested component complexity
-- String-based fillable fields
-- Estimated pagination heights
-- Complex positioning logic
-- Type safety issues
-- Performance problems
+4. Generate Supabase types:
+```bash
+supabase gen types typescript --linked > types/database.ts
+```
 
-## Reference Documents
+5. Run the development server:
+```bash
+yarn dev
+```
 
-- **ANTI_PATTERNS.md** - Comprehensive list of anti-patterns and gaps to avoid
-- **PROJECT_GOALS.md** - Original goals and purpose of the contract builder
-- Existing implementation: `src/components/pms/` and `src/pages/pms/`
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Development Guidelines
+## Project Structure
 
-When building the new implementation:
+```
+contract-editor/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Auth routes
+│   ├── (dashboard)/       # Dashboard routes
+│   └── api/               # API routes
+├── components/            # React components
+├── docs/                  # Documentation (all .md files except README.md)
+├── lib/                   # Utilities and helpers
+├── hooks/                 # Custom React hooks
+└── types/                 # TypeScript types
+```
 
-1. **Read PROJECT_GOALS.md first** - Understand the purpose and goals
-2. **Read ANTI_PATTERNS.md** - Understand what to avoid
-3. **Reference existing implementation** - Learn from mistakes, not copy them
-4. **Follow the principles** - Simplicity, type safety, performance, testability
-5. **Measure, don't estimate** - Use real DOM measurements
-6. **Single source of truth** - No duplicate state
-7. **Functionality over form** - Focus on making it work, not making it fancy
+## Features
 
-## Status
+- ✅ Next.js 15 with App Router
+- ✅ TypeScript
+- ✅ Tailwind CSS + shadcn/ui
+- ✅ Supabase integration
+- ✅ TipTap editor setup (to be implemented)
+- ✅ PDF export (to be implemented)
 
-🚧 **In Development** - This is a new implementation in progress.
+## Documentation
+
+All documentation files are located in the [`./docs`](./docs) directory:
+
+- [PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) - **Current project status and what's ready**
+- [SETUP_GUIDE.md](./docs/SETUP_GUIDE.md) - Detailed setup instructions
+- [QUICK_START.md](./docs/QUICK_START.md) - Quick start checklist
+- [PROJECT_SUMMARY.md](./docs/PROJECT_SUMMARY.md) - Project overview and architecture
+- [PROJECT_GOALS.md](./docs/PROJECT_GOALS.md) - Project goals and purpose
+- [ANTI_PATTERNS.md](./docs/ANTI_PATTERNS.md) - Anti-patterns to avoid
+- [CONVENTIONS.md](./docs/CONVENTIONS.md) - Documentation and code conventions
+
+**Note:** All markdown files (except `README.md`) should be placed in the `./docs` directory.
