@@ -785,7 +785,7 @@
   resolved "https://registry.yarnpkg.com/@tiptap/extension-font-family/-/extension-font-family-2.27.2.tgz#ead108a0e90b5081fe963c028be8e14d9a0e6291"
   integrity sha512-Lc3fAF/t3QXuG5AiOjGiCoyxJH7QyAOj5P+X4O6NfFtHST2wxoqIKqnlXkROv+g49Th/ypVGQ/z47wb6EG4iQg==
 
-"@tiptap/extension-font-size@^2.8.0":
+"@tiptap/extension-font-size@3.0.0-next.3":
   version "3.0.0-next.3"
   resolved "https://registry.yarnpkg.com/@tiptap/extension-font-size/-/extension-font-size-3.0.0-next.3.tgz#2cc00e5fa39d52e13674366ddf4f0129dc505952"
   integrity sha512-JmmrCboLvDH4HG1nOAMkiwmeFluliXaeEh5+RDxOofuzxsHjSYVJpNP846eLtMnjkUAxjvh7tBz7GTjATm3OuQ==

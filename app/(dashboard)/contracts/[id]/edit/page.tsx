@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
-import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Save, Trash2, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown } from 'lucide-react'
 import Link from 'next/link'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -23,6 +23,7 @@ export default function ContractEditPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   
   // Auto-save debounce
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -187,6 +188,40 @@ export default function ContractEditPage() {
     setContent(newContent)
   }
 
+  const handleExportPDF = async () => {
+    if (!contract) return
+
+    setIsExporting(true)
+    try {
+      const response = await fetch(`/api/export/${contractId}`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to export PDF' }))
+        throw new Error(errorData.error || 'Failed to export PDF')
+      }
+
+      // Get PDF blob
+      const blob = await response.blob()
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${contract.name || 'contract'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to export PDF')
+      console.error('Error exporting PDF:', err)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto py-8">
@@ -287,6 +322,24 @@ export default function ContractEditPage() {
                 <span>Save failed</span>
               </div>
             )}
+
+            <button
+              onClick={handleExportPDF}
+              disabled={isExporting}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <FileDown className="w-4 h-4" />
+                  Export PDF
+                </>
+              )}
+            </button>
 
             {!isFinalized && (
               <>
