@@ -18,6 +18,7 @@ import Toolbar from './Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
+import { PagePagination } from './PagePagination'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -175,7 +176,9 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       <div className={`editor-container ${className}`}>
         <div className="border rounded-lg bg-white">
           {showToolbar && <Toolbar editor={editor} />}
-          <EditorContent editor={editor} />
+          <PagePagination editor={editor}>
+            <EditorContent editor={editor} />
+          </PagePagination>
         </div>
       </div>
     )

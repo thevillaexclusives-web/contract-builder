@@ -72,6 +72,8 @@
 .ProseMirror {
   outline: none;
   font-size: 16px; /* Default font size */
+  /* Allow content to expand naturally, don't constrain height */
+  overflow: visible;
 }
 
 .ProseMirror p {
@@ -226,132 +228,106 @@
 
 /* A4 Page Support */
 /* A4 dimensions: 210mm × 297mm (8.27" × 11.69") */
-/* Using CSS units for accurate rendering */
+/* Aspect ratio: 1:1.414 (width:height) */
 :root {
   --a4-width: 210mm; /* 8.27 inches */
   --a4-height: 297mm; /* 11.69 inches */
+  --a4-aspect-ratio: 1.414; /* height/width ratio */
   --page-margin: 25mm; /* ~1 inch margins (standard) */
   --page-content-width: calc(var(--a4-width) - (var(--page-margin) * 2));
   --page-content-height: calc(var(--a4-height) - (var(--page-margin) * 2));
+  
+  /* Responsive scaling - max width for very large screens */
+  --page-max-width: 210mm; /* Don't exceed A4 width */
+  --page-max-width-px: 794px; /* ~210mm at 96 DPI */
 }
 
-/* Page container wrapper - only apply to editor content area */
+/* ============================================
+   PAGE CONTAINER SYSTEM
+   ============================================ */
+
+/* Editor container - gray background like document editors */
 .editor-container {
   background: #e5e5e5;
-  padding: 20px;
+  padding: 40px 20px;
   min-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
+/* Ensure wrapper doesn't clip content */
+.editor-container > div {
+  overflow: visible;
+}
+
+/* Page content wrapper */
+.page-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  padding: 20px 0;
+  min-height: 100%;
+  background-color: #e5e5e5;
+  /* Reset page counter */
+  counter-reset: page;
+}
+
+/* Page container - wraps the editor content */
 .editor-container .ProseMirror {
-  max-width: var(--page-content-width);
-  min-height: var(--page-content-height);
-  margin: 0 auto 40px auto;
-  padding: var(--page-margin);
+  /* Responsive width: use 85% of container, max A4 width (794px = ~210mm) */
+  width: min(85%, 794px);
+  max-width: 794px;
+  /* Maintain A4 aspect ratio (width:height = 1:1.414) */
+  /* Height is automatically calculated: width × 1.414 */
+  aspect-ratio: 1 / 1.414;
+  /* Don't set min-height - it conflicts with aspect-ratio */
+  margin: 0;
+  padding: 10mm;
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   position: relative;
-  /* Ensure proper page-like appearance */
+  /* Page number counter */
+  counter-increment: page;
+  /* Allow content to overflow vertically if it exceeds page height */
+  overflow-y: visible;
+  /* Ensure proper box sizing */
+  box-sizing: border-box;
 }
 
-/* Each page should have spacing between them */
-.editor-container .ProseMirror + .ProseMirror {
-  margin-top: 40px;
+/* Page number indicator - bottom right of the page */
+.editor-container .ProseMirror::after {
+  content: 'Page ' counter(page);
+  position: absolute;
+  bottom: 15px;
+  right: 10mm;
+  font-size: 11px;
+  color: #999;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  z-index: 1;
 }
 
-/* Page break styling */
+/* Page break styling - manual page breaks */
 .ProseMirror .page-break {
   page-break-after: always;
   break-after: page;
   height: 0;
-  margin: 60px 0;
+  margin: 0;
   padding: 0;
   border: none;
-  position: relative;
-  display: block;
-  clear: both;
-}
-
-/* Visual indicator for page break (only in editor, not in PDF) */
-.ProseMirror .page-break::before {
-  content: '';
-  display: block;
-  height: 2px;
-  background: linear-gradient(to right, transparent, #ccc 20%, #ccc 80%, transparent);
-  margin: 20px 0;
-  position: relative;
-}
-
-/* Create visual gap showing next page starts here */
-.ProseMirror .page-break::after {
-  content: '';
-  display: block;
-  height: var(--page-content-height);
-  min-height: var(--page-content-height);
-  margin-top: 20px;
-  border-top: 2px solid #e0e0e0;
-  background: white;
-  position: relative;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
-}
-
-/* Page container wrapper - only apply to editor content area */
-.editor-container {
-  background: #e5e5e5;
-  padding: 20px;
-  min-height: 100vh;
-}
-
-.editor-container .ProseMirror {
-  max-width: var(--page-content-width);
-  min-height: var(--page-content-height);
-  margin: 0 auto 40px auto;
-  padding: var(--page-margin);
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  position: relative;
-  /* Ensure proper page-like appearance */
-}
-
-/* Each page should have spacing between them */
-.editor-container .ProseMirror + .ProseMirror {
-  margin-top: 40px;
-}
-
-/* Page break styling - creates visual gap between pages */
-.ProseMirror .page-break {
-  page-break-after: always;
-  break-after: page;
-  height: 0;
-  margin: 40px 0;
-  padding: 0;
-  border: none;
-  position: relative;
   display: block;
   clear: both;
   width: 100%;
 }
 
-/* Visual indicator for page break (only in editor, not in PDF) */
+/* Visual indicator for manual page break */
 .ProseMirror .page-break::before {
   content: '';
   display: block;
   height: 2px;
   background: linear-gradient(to right, transparent, #ccc 20%, #ccc 80%, transparent);
   margin: 20px 0;
-  position: relative;
-}
-
-/* Create visual gap showing next page starts here */
-.ProseMirror .page-break::after {
-  content: '';
-  display: block;
-  height: var(--page-content-height);
-  min-height: var(--page-content-height);
-  margin-top: 20px;
-  border-top: 2px solid #e0e0e0;
-  background: white;
-  position: relative;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
 }
 
 /* Ensure proper spacing and line heights */
