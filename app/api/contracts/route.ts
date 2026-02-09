@@ -66,8 +66,8 @@ export async function POST(request: Request) {
       }
 
       // If content is not provided, use template content
-      if (!body.content) {
-        body.content = template.content as any
+      if (!body.content && template) {
+        body.content = (template as { content?: unknown }).content as any
       }
     }
 
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
     const { data, error } = await supabase
       .from('contracts')
+      // @ts-ignore - Supabase type inference limitation with complex query chains
       .insert(contractData)
       .select()
       .single()

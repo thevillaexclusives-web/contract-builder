@@ -53,7 +53,6 @@ export default function FieldInsertDropdown({ editor }: FieldInsertDropdownProps
         id: fieldId,
         type: fieldType,
         label: '',
-        value: '',
       }).run()
     },
     [editor]

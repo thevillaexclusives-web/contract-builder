@@ -1,5 +1,16 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    field: {
+      /**
+       * Insert a field node
+       */
+      insertField: (options: { id?: string; label?: string; type?: string }) => ReturnType
+    }
+  }
+}
+
 /**
  * Field Node Extension
  * 
@@ -252,8 +263,9 @@ export const FieldNode = Node.create({
 
   addCommands() {
     return {
-      insertField: (options: { id?: string; label?: string; type?: string }) => {
-        return ({ commands }) => {
+      insertField:
+        (options: { id?: string; label?: string; type?: string }) =>
+        ({ commands }) => {
           const fieldId = options.id || `field-${Date.now()}`
           return commands.insertContent({
             type: this.name,
@@ -264,8 +276,7 @@ export const FieldNode = Node.create({
               type: options.type || 'text',
             },
           })
-        }
-      },
+        },
     }
   },
 })

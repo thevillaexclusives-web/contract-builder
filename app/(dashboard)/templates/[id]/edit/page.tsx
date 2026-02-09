@@ -27,12 +27,7 @@ export default function TemplateEditPage() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef<string>('')
 
-  // Load template
-  useEffect(() => {
-    loadTemplate()
-  }, [templateId])
-
-  const loadTemplate = async () => {
+  const loadTemplate = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -66,7 +61,12 @@ export default function TemplateEditPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [templateId])
+
+  // Load template
+  useEffect(() => {
+    loadTemplate()
+  }, [loadTemplate])
 
   // Save template
   const saveTemplate = useCallback(async (showStatus = true) => {

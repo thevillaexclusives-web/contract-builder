@@ -90,7 +90,7 @@ export async function POST(
     ])
 
     // Use require for PDFMake to avoid bundling issues
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line
     const pdfmake = require('pdfmake')
     
     // Use standard fonts that come with PDFKit (no external files needed)

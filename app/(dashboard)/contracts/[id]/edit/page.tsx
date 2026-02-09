@@ -28,12 +28,7 @@ export default function ContractEditPage() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef<string>('')
 
-  // Load contract
-  useEffect(() => {
-    loadContract()
-  }, [contractId])
-
-  const loadContract = async () => {
+  const loadContract = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -67,7 +62,12 @@ export default function ContractEditPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [contractId])
+
+  // Load contract
+  useEffect(() => {
+    loadContract()
+  }, [loadContract])
 
   // Save contract
   const saveContract = useCallback(async (showStatus = true) => {

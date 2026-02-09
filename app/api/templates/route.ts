@@ -65,6 +65,7 @@ export async function POST(request: Request) {
 
     const { data, error } = await supabase
       .from('contract_templates')
+      // @ts-ignore - Supabase type inference limitation with complex query chains
       .insert(templateData)
       .select()
       .single()

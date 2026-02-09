@@ -66,7 +66,7 @@ export async function PUT(
       .single()
 
     // If contract is already finalized and we're not just finalizing it, prevent update
-    if (existingContract?.status === 'final' && body.status !== 'final') {
+    if (existingContract && (existingContract as { status?: string }).status === 'final' && body.status !== 'final') {
       return NextResponse.json(
         { error: 'Cannot update finalized contract' },
         { status: 400 }
@@ -90,6 +90,7 @@ export async function PUT(
 
     const { data, error } = await supabase
       .from('contracts')
+      // @ts-ignore - Supabase type inference limitation with complex query chains
       .update(updateData as Database['public']['Tables']['contracts']['Update'])
       .eq('id', id)
       .eq('created_by', user.id)
@@ -126,6 +127,7 @@ export async function DELETE(
 
     const { error } = await supabase
       .from('contracts')
+      // @ts-ignore - Supabase type inference limitation with complex query chains
       .update({ deleted_at: new Date().toISOString() } as Database['public']['Tables']['contracts']['Update'])
       .eq('id', id)
       .eq('created_by', user.id)
