@@ -12,6 +12,7 @@ import { useEffect, useImperativeHandle, forwardRef } from 'react'
 import type { JSONContent } from '@tiptap/core'
 import type { EditorProps, EditorRef } from '@/types/editor'
 import Toolbar from './Toolbar'
+import { CustomOrderedList } from './extensions/custom-ordered-list'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -28,9 +29,10 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
-          // Disable some default extensions we might not need
-          // or configure them differently
+          // Keep default OrderedList disabled, use our custom one
+          orderedList: false,
         }),
+        CustomOrderedList, // Our custom ordered list with Roman/letter support
         Table.configure({
           resizable: true,
         }),
