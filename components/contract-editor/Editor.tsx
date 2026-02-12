@@ -18,6 +18,7 @@ import Toolbar from './Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
+import { PaginationSpacers } from './extensions/pagination-spacers'
 import { PagePagination } from './PagePagination'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
@@ -54,6 +55,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         FontSize,
         FieldNode, // Custom field node for fillable fields
         PageBreak, // Page break support
+        PaginationSpacers, // Widget decorations for page break spacers
       ],
       content: content || {
         type: 'doc',
@@ -174,8 +176,14 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
 
     return (
       <div className={`editor-container ${className}`}>
-        <div className="border rounded-lg bg-white">
-          {showToolbar && <Toolbar editor={editor} />}
+        <div>
+          {showToolbar && (
+            <div className="max-w-[794px] mx-auto mb-0">
+              <div className="border rounded-t-lg bg-white">
+                <Toolbar editor={editor} />
+              </div>
+            </div>
+          )}
           <PagePagination editor={editor}>
             <EditorContent editor={editor} />
           </PagePagination>

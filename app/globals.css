@@ -262,10 +262,11 @@
 
 /* Page content wrapper */
 .page-content-wrapper {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
+  gap: 0;
   padding: 20px 0;
   min-height: 100%;
   background-color: #e5e5e5;
@@ -273,45 +274,91 @@
   counter-reset: page;
 }
 
+/* Editor content - editable container */
+.page-content-wrapper .editor-content-editable {
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+
+/* Page boundaries overlay - visual page cards and gaps (behind editor content) */
+.page-content-wrapper .page-boundaries-overlay {
+  position: absolute;
+  top: 20px; /* match wrapper padding-top so cards align with content */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* TipTap EditorContent wrapper div - takes full width */
 .page-content-wrapper > div {
   width: 100%;
 }
 
-/* Page container - wraps the editor content */
-.editor-container .ProseMirror {
-  /* Responsive width: 100% of parent container */
-  width: 100%;
-  max-width: 100%;
-  /* Maintain A4 aspect ratio (width:height = 1:1.414) */
-  /* Height is automatically calculated: width × 1.414 */
-  aspect-ratio: 1 / 1.414;
-  /* Don't set min-height - it conflicts with aspect-ratio */
-  margin: 0;
-  padding: 22mm;
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+/* Editor content container - single scrollable editor */
+.page-content-wrapper .editor-content-container {
   position: relative;
-  /* Page number counter */
-  counter-increment: page;
-  /* Allow content to overflow vertically if it exceeds page height */
-  overflow-y: visible;
-  /* Ensure proper box sizing */
-  box-sizing: border-box;
+  width: 100%;
+  z-index: 2;
 }
 
-/* Page number indicator - bottom right of the page */
-.editor-container .ProseMirror::after {
-  content: 'Page ' counter(page);
+/* ProseMirror editor - let it grow naturally, constrained to A4 width */
+.page-content-wrapper .editor-content-container .ProseMirror {
+  width: 794px;
+  margin: 0 auto;
+  padding: 0 22mm;
+  padding-top: 22mm;
+  background: transparent;
+  box-shadow: none;
+  position: relative;
+  box-sizing: border-box;
+  min-height: 956px; /* Minimum one page content area */
+  overflow: visible;
+}
+
+
+/* Page boundary - white card for each page */
+.page-content-wrapper .page-boundary {
+  position: absolute;
+  width: 794px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* Gray gap between pages */
+.page-content-wrapper .page-gap {
+  position: absolute;
+  width: 100%;
+  height: 40px;
+  background: #e5e5e5;
+  z-index: 4;
+  left: 0;
+  pointer-events: none;
+}
+
+/* Pagination spacer - injected by ProseMirror widget decoration at page breaks */
+.ProseMirror .pagination-spacer {
+  width: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Page number in footer area */
+.page-content-wrapper .page-number-indicator {
   position: absolute;
   bottom: 15px;
-  right: 10mm;
+  right: 22mm;
   font-size: 11px;
   color: #999;
-  pointer-events: none;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  z-index: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+
 
 /* Page break styling - manual page breaks */
 .ProseMirror .page-break {
