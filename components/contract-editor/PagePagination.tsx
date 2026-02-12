@@ -34,27 +34,75 @@ export function PagePagination({ editor, children }: PagePaginationProps) {
   /**
    * Apply clip-path with evenodd fill rule to create rectangular "windows"
    * for each page. Content in gap areas is clipped out completely.
+   * 
+   * CRITICAL: Clip-path coordinates are relative to the element it's applied to.
+   * We need to align the clip-path rectangles with the actual page boundary positions.
    */
   const applyClipPath = useCallback((pages: number) => {
     const container = containerRef.current
-    if (!container) return
+    const wrapper = wrapperRef.current
+    if (!container || !wrapper) return
 
     if (pages <= 1) {
       container.style.clipPath = 'none'
+      // @ts-ignore - webkitClipPath for Safari support
+      container.style.webkitClipPath = 'none'
       return
     }
 
+    // Get actual positions of container and page boundaries overlay
+    const containerRect = container.getBoundingClientRect()
+    const wrapperRect = wrapper.getBoundingClientRect()
+    
+    // Find the page boundaries overlay element
+    const overlayEl = wrapper.querySelector('.page-boundaries-overlay') as HTMLElement
+    if (!overlayEl) {
+      console.warn('Page boundaries overlay not found')
+      return
+    }
+    
+    const overlayRect = overlayEl.getBoundingClientRect()
+    
+    // Calculate the offset: where does the container start relative to the overlay?
+    // The overlay has top: 20px relative to wrapper
+    // The container is a direct child of wrapper, so it should also start at ~20px
+    // But we measure to be precise
+    const containerTopRelativeToWrapper = containerRect.top - wrapperRect.top
+    const overlayTopRelativeToWrapper = overlayRect.top - wrapperRect.top
+    
+    // The clip-path coordinates are relative to the container
+    // So we need: clipPathTop = (overlayTop - containerTop) + pageOffset
+    const baseOffset = overlayTopRelativeToWrapper - containerTopRelativeToWrapper
+    
     // Build SVG path with one rectangle per page
-    // Each rectangle is: M x y H width V bottom H x Z
-    // The evenodd fill rule makes each rectangle a visible window
+    // Each rectangle creates a "window" where content is visible
+    // The evenodd fill rule makes overlapping rectangles work correctly
     const rects: string[] = []
     for (let i = 0; i < pages; i++) {
-      const pageTop = i * (A4_PAGE_HEIGHT + PAGE_GAP)
+      // Page boundaries are positioned at: overlayTop + i * (A4_PAGE_HEIGHT + PAGE_GAP)
+      // Relative to container: baseOffset + i * (A4_PAGE_HEIGHT + PAGE_GAP)
+      const pageTop = baseOffset + i * (A4_PAGE_HEIGHT + PAGE_GAP)
       const pageBottom = pageTop + A4_PAGE_HEIGHT
+      
+      // Create rectangle: Move to (0, top), Horizontal line to right edge, Vertical line to bottom, Horizontal line back, Close path
       rects.push(`M 0 ${pageTop} H 9999 V ${pageBottom} H 0 Z`)
     }
 
-    container.style.clipPath = `path(evenodd, "${rects.join(' ')}")`
+    const clipPathValue = `path(evenodd, "${rects.join(' ')}")`
+    container.style.clipPath = clipPathValue
+    // @ts-ignore - webkitClipPath for Safari support
+    container.style.webkitClipPath = clipPathValue
+    
+    // Debug: log the clip-path for troubleshooting
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Clip-path applied:', {
+        pages,
+        baseOffset,
+        clipPathValue,
+        containerTop: containerRect.top - wrapperRect.top,
+        overlayTop: overlayTopRelativeToWrapper,
+      })
+    }
   }, [])
 
   const calculateBreaks = useCallback(() => {
