@@ -20,6 +20,7 @@ interface PagePaginationProps {
  * 1. Feeds break positions to the PaginationSpacers extension (which injects
  *    widget-decoration spacers so content flows around page gaps)
  * 2. Renders white page cards + gray gaps as a background overlay
+ * 3. Applies clip-path on the editor container to hide content in gap areas
  *
  * Spacer height is variable per break: it fills the remaining space on the
  * current page + gap + next page's top padding. This keeps the fixed-position
@@ -27,7 +28,34 @@ interface PagePaginationProps {
  */
 export function PagePagination({ editor, children }: PagePaginationProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [pageCount, setPageCount] = useState(1)
+
+  /**
+   * Apply clip-path with evenodd fill rule to create rectangular "windows"
+   * for each page. Content in gap areas is clipped out completely.
+   */
+  const applyClipPath = useCallback((pages: number) => {
+    const container = containerRef.current
+    if (!container) return
+
+    if (pages <= 1) {
+      container.style.clipPath = 'none'
+      return
+    }
+
+    // Build SVG path with one rectangle per page
+    // Each rectangle is: M x y H width V bottom H x Z
+    // The evenodd fill rule makes each rectangle a visible window
+    const rects: string[] = []
+    for (let i = 0; i < pages; i++) {
+      const pageTop = i * (A4_PAGE_HEIGHT + PAGE_GAP)
+      const pageBottom = pageTop + A4_PAGE_HEIGHT
+      rects.push(`M 0 ${pageTop} H 9999 V ${pageBottom} H 0 Z`)
+    }
+
+    container.style.clipPath = `path(evenodd, "${rects.join(' ')}")`
+  }, [])
 
   const calculateBreaks = useCallback(() => {
     if (!editor || !wrapperRef.current) return
@@ -36,45 +64,59 @@ export function PagePagination({ editor, children }: PagePaginationProps) {
     if (!proseMirrorEl) return
 
     const breakInfos: PageBreakInfo[] = []
-    let contentHeight = 0
+    const proseMirrorRect = proseMirrorEl.getBoundingClientRect()
+    const paddingTop = A4_PADDING_PX // 83px (22mm)
+
+    let cumulativeSpacerHeight = 0
+    let currentPageStart = 0
 
     const childElements = Array.from(proseMirrorEl.children) as HTMLElement[]
 
     for (const child of childElements) {
-      // Skip existing spacer decorations during measurement
-      if (child.classList.contains('pagination-spacer')) continue
+      // Track spacer heights but skip them for break calculation
+      if (child.classList.contains('pagination-spacer')) {
+        cumulativeSpacerHeight += child.getBoundingClientRect().height
+        continue
+      }
 
-      const nodeHeight = child.getBoundingClientRect().height
+      // Use the element's actual rendered position (includes margins)
+      const childRect = child.getBoundingClientRect()
+      const contentBottom = childRect.bottom - proseMirrorRect.top - paddingTop - cumulativeSpacerHeight
+      const bottomOnPage = contentBottom - currentPageStart
 
-      if (contentHeight + nodeHeight > A4_CONTENT_HEIGHT && contentHeight > 0) {
+      if (bottomOnPage > A4_CONTENT_HEIGHT && currentPageStart < contentBottom) {
         // This node overflows the current page — break before it
+        const contentTop = childRect.top - proseMirrorRect.top - paddingTop - cumulativeSpacerHeight
+        const topOnPage = contentTop - currentPageStart
+
         try {
           const domPos = editor.view.posAtDOM(child, 0)
           const resolved = editor.state.doc.resolve(domPos)
           const pos = resolved.before(1) // position before the top-level block node
 
           // Fill remaining page space + gap + next page top padding
-          const spacerHeight = (A4_CONTENT_HEIGHT - contentHeight) + BASE_SPACER
+          const spacerHeight = (A4_CONTENT_HEIGHT - topOnPage) + BASE_SPACER
 
           breakInfos.push({ pos, spacerHeight })
-          contentHeight = nodeHeight // this node starts on the new page
+
+          // The new page starts after the content consumed so far
+          currentPageStart = contentTop
+          cumulativeSpacerHeight += spacerHeight
         } catch {
-          // If position resolution fails, just accumulate
-          contentHeight += nodeHeight
+          // If position resolution fails, just continue
         }
-      } else {
-        contentHeight += nodeHeight
       }
     }
 
-    // Update page count first (always needed for visual rendering)
-    setPageCount(Math.max(1, breakInfos.length + 1))
+    // Update page count (always needed for visual rendering)
+    const newPageCount = Math.max(1, breakInfos.length + 1)
+    setPageCount(newPageCount)
+
+    // Apply clip-path to editor container to hide content in gap areas
+    applyClipPath(newPageCount)
 
     // Only update storage if extension is initialized (prevents infinite loop)
-    // Ensure storage exists (extension might not be initialized yet)
     if (!editor.storage.paginationSpacers) {
-      // Extension storage not initialized yet, skip storage update
-      // Page count is already updated above, so visual rendering will work
       return
     }
 
@@ -87,7 +129,7 @@ export function PagePagination({ editor, children }: PagePaginationProps) {
       // Trigger ProseMirror to re-read decorations
       editor.view.dispatch(editor.state.tr.setMeta('paginationSpacersUpdate', true))
     }
-  }, [editor])
+  }, [editor, applyClipPath])
 
   useEffect(() => {
     if (!editor || !wrapperRef.current) return
@@ -128,41 +170,31 @@ export function PagePagination({ editor, children }: PagePaginationProps) {
       data-page-count={pageCount}
       style={{ minHeight: `${totalHeight}px` }}
     >
-      {/* Editor content */}
-      <div className="editor-content-container">
-        {children}
-      </div>
-
-      {/* Page cards + gaps overlay (behind editor, z-index 0) */}
+      {/* Page cards overlay (behind editor content) */}
       <div className="page-boundaries-overlay">
         {Array.from({ length: pageCount }).map((_, i) => {
           const pageTop = i * (A4_PAGE_HEIGHT + PAGE_GAP)
 
           return (
-            <div key={i}>
-              {/* White page card */}
-              <div
-                className="page-boundary"
-                style={{
-                  top: `${pageTop}px`,
-                  height: `${A4_PAGE_HEIGHT}px`,
-                }}
-              >
-                <div className="page-number-indicator">
-                  Page {i + 1}
-                </div>
+            <div
+              key={i}
+              className="page-boundary"
+              style={{
+                top: `${pageTop}px`,
+                height: `${A4_PAGE_HEIGHT}px`,
+              }}
+            >
+              <div className="page-number-indicator">
+                Page {i + 1}
               </div>
-
-              {/* Gray gap after this page (except last) */}
-              {i < pageCount - 1 && (
-                <div
-                  className="page-gap"
-                  style={{ top: `${pageTop + A4_PAGE_HEIGHT}px` }}
-                />
-              )}
             </div>
           )
         })}
+      </div>
+
+      {/* Editor content - above page cards, clip-path hides gap overflow */}
+      <div ref={containerRef} className="editor-content-container">
+        {children}
       </div>
     </div>
   )

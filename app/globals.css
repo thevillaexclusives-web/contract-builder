@@ -281,7 +281,7 @@
   z-index: 1;
 }
 
-/* Page boundaries overlay - visual page cards and gaps (behind editor content) */
+/* Page boundaries overlay - white page cards (behind editor content) */
 .page-content-wrapper .page-boundaries-overlay {
   position: absolute;
   top: 20px; /* match wrapper padding-top so cards align with content */
@@ -289,7 +289,7 @@
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 0;
+  z-index: 1; /* Behind editor content so content is visible */
 }
 
 /* TipTap EditorContent wrapper div - takes full width */
@@ -320,7 +320,7 @@
 
 
 /* Page boundary - white card for each page */
-.page-content-wrapper .page-boundary {
+.page-content-wrapper .page-boundaries-overlay .page-boundary {
   position: absolute;
   width: 794px;
   left: 50%;
@@ -328,17 +328,6 @@
   background: white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   box-sizing: border-box;
-  pointer-events: none;
-}
-
-/* Gray gap between pages */
-.page-content-wrapper .page-gap {
-  position: absolute;
-  width: 100%;
-  height: 40px;
-  background: #e5e5e5;
-  z-index: 4;
-  left: 0;
   pointer-events: none;
 }
 
