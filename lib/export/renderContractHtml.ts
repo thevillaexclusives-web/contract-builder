@@ -73,9 +73,47 @@ export function renderContractHtml(
       print-color-adjust: exact;
     }
 
+    /* Pre-pagination: flow container holds raw content */
     #flow {
       width: 210mm;
       padding: 24mm 20mm;
+    }
+
+    /* Post-pagination: hide flow, show pages */
+    body.paginated #flow { display: none; }
+
+    section.page {
+      width: 210mm;
+      height: 297mm;
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+    section.page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    section.page > header {
+      height: 25.4mm;
+      padding: 6.35mm 16.9mm 0 16.9mm;
+    }
+
+    section.page > main {
+      height: calc(297mm - 25.4mm - 19.0mm - 6.35mm - 6.35mm);
+      padding: 0 16.9mm;
+      overflow: hidden;
+    }
+
+    section.page > footer {
+      height: 19.0mm;
+      padding: 0 16.9mm 6.35mm 16.9mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9pt;
+      color: #666;
     }
 
     /* Typography */
@@ -110,16 +148,6 @@ export function renderContractHtml(
     th {
       font-weight: 700;
       background-color: #f5f5f5;
-    }
-
-    /* Page break node */
-    div[data-type="page-break"] {
-      page-break-after: always;
-      break-after: page;
-      height: 0;
-      margin: 0;
-      padding: 0;
-      border: none;
     }
 
     /* Blockquotes */
@@ -158,6 +186,82 @@ export function renderContractHtml(
 </head>
 <body>
   <div id="flow" class="ProseMirror">${bodyHtml}</div>
+  <script>
+    (function paginate() {
+      var flow = document.getElementById('flow');
+      if (!flow) return;
+
+      // Collect all top-level child nodes from flow
+      var children = Array.from(flow.childNodes);
+
+      // Helper: create a new page section
+      function createPage() {
+        var section = document.createElement('section');
+        section.className = 'page';
+
+        var header = document.createElement('header');
+        var main = document.createElement('main');
+        var footer = document.createElement('footer');
+
+        section.appendChild(header);
+        section.appendChild(main);
+        section.appendChild(footer);
+
+        return section;
+      }
+
+      // Build pages
+      var pages = [];
+      var currentPage = createPage();
+      document.body.appendChild(currentPage);
+      pages.push(currentPage);
+
+      var currentMain = currentPage.querySelector('main');
+
+      for (var i = 0; i < children.length; i++) {
+        var node = children[i];
+
+        // Skip whitespace-only text nodes
+        if (node.nodeType === 3 && !node.textContent.trim()) continue;
+
+        // Check for page-break node
+        if (node.nodeType === 1 && node.getAttribute('data-type') === 'page-break') {
+          // Force new page, do not render the page-break marker
+          currentPage = createPage();
+          document.body.appendChild(currentPage);
+          pages.push(currentPage);
+          currentMain = currentPage.querySelector('main');
+          continue;
+        }
+
+        // Append node to current main
+        currentMain.appendChild(node);
+
+        // Check overflow
+        if (currentMain.scrollHeight > currentMain.clientHeight) {
+          // Remove from current, start new page
+          currentMain.removeChild(node);
+
+          currentPage = createPage();
+          document.body.appendChild(currentPage);
+          pages.push(currentPage);
+          currentMain = currentPage.querySelector('main');
+
+          currentMain.appendChild(node);
+        }
+      }
+
+      // Write page numbers
+      var totalPages = pages.length;
+      for (var p = 0; p < totalPages; p++) {
+        var footer = pages[p].querySelector('footer');
+        footer.textContent = 'Page ' + (p + 1) + ' of ' + totalPages;
+      }
+
+      // Mark body as paginated to swap visibility
+      document.body.classList.add('paginated');
+    })();
+  </script>
 </body>
 </html>`
 }

@@ -76,17 +76,17 @@ export async function POST(
         const chromium = await import('@sparticuz/chromium')
         browser = await puppeteerCore.default.launch({
           args: chromium.default.args,
-          defaultViewport: chromium.default.defaultViewport,
           executablePath: await chromium.default.executablePath(),
           headless: true,
         })
       }
 
       const page = await browser.newPage()
+      await page.setViewport({ width: 1200, height: 800 })
       await page.setContent(html, { waitUntil: 'networkidle0' })
       await page.emulateMediaType('print')
 
-      const pdfBuffer = await page.pdf({
+      const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
         margin: {
@@ -97,7 +97,9 @@ export async function POST(
         },
       })
 
-      return new NextResponse(pdfBuffer, {
+      const body = Buffer.from(pdf)
+
+      return new NextResponse(body, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="${contractName || 'contract'}.pdf"`,
