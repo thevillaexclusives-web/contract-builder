@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import { PAGE_CONFIG, contentUsableHeight } from '../config/pageConfig'
+import { paginationSpacersKey } from '../extensions/pagination-spacers'
 import type { PageBreakInfo } from '../extensions/pagination-spacers'
 
 const SPACER_HEIGHT =
@@ -14,7 +15,7 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
   const rafRef = useRef<number>(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevBreaksRef = useRef<string>('')
-  const pageCountRef = useRef(1)
+  const [pageCount, setPageCount] = useState(1)
 
   const measure = useCallback(() => {
     if (!editor || editor.isDestroyed) return
@@ -33,11 +34,7 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
     })
 
     if (blocks.length === 0) {
-      if (editor.storage.paginationSpacers) {
-        editor.storage.paginationSpacers.breakInfos = []
-        // Trigger decoration rebuild
-        view.dispatch(view.state.tr.setMeta('paginationSpacers', true))
-      }
+      view.dispatch(view.state.tr.setMeta(paginationSpacersKey, []))
       return
     }
 
@@ -69,12 +66,9 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
     const key = breakInfos.map((b) => `${b.pos}`).join(',')
     if (key === prevBreaksRef.current) return
     prevBreaksRef.current = key
-    pageCountRef.current = breakInfos.length + 1
+    setPageCount(breakInfos.length + 1)
 
-    if (editor.storage.paginationSpacers) {
-      editor.storage.paginationSpacers.breakInfos = breakInfos
-      view.dispatch(view.state.tr.setMeta('paginationSpacers', true))
-    }
+    view.dispatch(view.state.tr.setMeta(paginationSpacersKey, breakInfos))
   }, [editor])
 
   const debouncedMeasure = useCallback(() => {
@@ -129,5 +123,5 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
     }
   }, [editor, debouncedMeasure])
 
-  return { pageCount: pageCountRef.current }
+  return { pageCount }
 }

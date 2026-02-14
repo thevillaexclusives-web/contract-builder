@@ -370,7 +370,6 @@
   content: '';
   display: block;
   height: 2px;
-  background: linear-gradient(to right, transparent, #ccc 20%, #ccc 80%, transparent);
   margin: 20px 0;
 }
 

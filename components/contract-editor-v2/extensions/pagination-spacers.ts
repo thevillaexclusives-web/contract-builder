@@ -7,29 +7,39 @@ export interface PageBreakInfo {
   spacerHeight: number
 }
 
-const pluginKey = new PluginKey('paginationSpacers')
+interface PaginationState {
+  breakInfos: PageBreakInfo[]
+}
+
+export const paginationSpacersKey = new PluginKey<PaginationState>('paginationSpacers')
 
 export const PaginationSpacers = Extension.create({
   name: 'paginationSpacers',
 
-  addStorage() {
-    return {
-      breakInfos: [] as PageBreakInfo[],
-    }
-  },
-
   addProseMirrorPlugins() {
-    const extension = this
-
     return [
-      new Plugin({
-        key: pluginKey,
+      new Plugin<PaginationState>({
+        key: paginationSpacersKey,
+
+        state: {
+          init(): PaginationState {
+            return { breakInfos: [] }
+          },
+          apply(tr, prev): PaginationState {
+            const meta = tr.getMeta(paginationSpacersKey) as PageBreakInfo[] | undefined
+            if (meta) {
+              return { breakInfos: meta }
+            }
+            return prev
+          },
+        },
+
         props: {
           decorations(state) {
-            const breakInfos = extension.storage.breakInfos as PageBreakInfo[]
-            if (!breakInfos.length) return DecorationSet.empty
+            const pluginState = paginationSpacersKey.getState(state)
+            if (!pluginState || !pluginState.breakInfos.length) return DecorationSet.empty
 
-            const decorations = breakInfos
+            const decorations = pluginState.breakInfos
               .filter((info) => info.pos > 0 && info.pos <= state.doc.content.size)
               .map((info) =>
                 Decoration.widget(
