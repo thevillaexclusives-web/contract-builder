@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { renderContractHtml } from '@/lib/export/renderContractHtml'
+
+export const runtime = 'nodejs'
 
 // Test route to verify routing works
 export async function GET(
@@ -16,11 +19,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    
+
     if (!id) {
       return NextResponse.json({ error: 'Contract ID is required' }, { status: 400 })
     }
-    
+
     const supabase = await createClient()
 
     const {
@@ -49,7 +52,7 @@ export async function POST(
     // Get contract content (TipTap JSON)
     const content = (contract as any).content
     const contractName = (contract as any).name as string
-    
+
     if (!content) {
       return NextResponse.json(
         { error: 'Contract content is empty' },
@@ -57,94 +60,54 @@ export async function POST(
       )
     }
 
-    // Debug: Log the contract content structure
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📋 Contract Content Structure:')
-      console.log('📋 Content type:', content?.type)
-      console.log('📋 Content children count:', content?.content?.length)
-      console.log('📋 First few nodes:', JSON.stringify(content?.content?.slice(0, 3), null, 2))
-      
-      // Check for field nodes
-      const findFields = (node: any): any[] => {
-        const fields: any[] = []
-        if (node.type === 'field') {
-          fields.push(node)
-        }
-        if (node.content) {
-          for (const child of node.content) {
-            fields.push(...findFields(child))
-          }
-        }
-        return fields
+    // Render TipTap JSON to full HTML document
+    const html = renderContractHtml(content, contractName)
+
+    // Launch Puppeteer
+    let browser
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        // Dev: use local puppeteer
+        const puppeteer = await import('puppeteer')
+        browser = await puppeteer.default.launch({ headless: true })
+      } else {
+        // Production / Vercel: use puppeteer-core + @sparticuz/chromium
+        const puppeteerCore = await import('puppeteer-core')
+        const chromium = await import('@sparticuz/chromium')
+        browser = await puppeteerCore.default.launch({
+          args: chromium.default.args,
+          defaultViewport: chromium.default.defaultViewport,
+          executablePath: await chromium.default.executablePath(),
+          headless: true,
+        })
       }
-      const fields = findFields(content)
-      console.log('📋 Found fields:', fields.length)
-      if (fields.length > 0) {
-        console.log('📋 First field:', JSON.stringify(fields[0], null, 2))
-      }
-    }
 
-    // Dynamic imports for PDF generation (load only when needed)
-    const [{ mapTipTapToPDFMake }] = await Promise.all([
-      import('@/lib/pdf/mapper'),
-    ])
+      const page = await browser.newPage()
+      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.emulateMediaType('print')
 
-    // Use require for PDFMake to avoid bundling issues
-    // eslint-disable-next-line
-    const pdfmake = require('pdfmake')
-    
-    // Use standard fonts that come with PDFKit (no external files needed)
-    // These are the built-in fonts available in PDFKit/PDFMake
-    const standardFonts = {
-      Times: {
-        normal: 'Times-Roman',
-        bold: 'Times-Bold',
-        italics: 'Times-Italic',
-        bolditalics: 'Times-BoldItalic',
-      },
-      Helvetica: {
-        normal: 'Helvetica',
-        bold: 'Helvetica-Bold',
-        italics: 'Helvetica-Oblique',
-        bolditalics: 'Helvetica-BoldOblique',
-      },
-      Courier: {
-        normal: 'Courier',
-        bold: 'Courier-Bold',
-        italics: 'Courier-Oblique',
-        bolditalics: 'Courier-BoldOblique',
-      },
-    }
-
-    // Create printer with fonts and empty VFS to prevent file access
-    const printer = new pdfmake(standardFonts, {})
-
-    const docDefinition = mapTipTapToPDFMake(content, {
-      title: contractName,
-    })
-
-    // Generate PDF
-    const pdfDoc = printer.createPdfKitDocument(docDefinition)
-    
-    // Convert PDF to buffer
-    const chunks: Uint8Array[] = []
-    pdfDoc.on('data', (chunk: Uint8Array) => chunks.push(chunk))
-    
-    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-      pdfDoc.on('end', () => {
-        resolve(Buffer.concat(chunks))
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '0mm',
+          right: '0mm',
+          bottom: '0mm',
+          left: '0mm',
+        },
       })
-      pdfDoc.on('error', reject)
-      pdfDoc.end()
-    })
 
-    // Return PDF as response
-    return new NextResponse(pdfBuffer as any, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${contractName || 'contract'}.pdf"`,
-      },
-    })
+      return new NextResponse(pdfBuffer, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${contractName || 'contract'}.pdf"`,
+        },
+      })
+    } finally {
+      if (browser) {
+        await browser.close()
+      }
+    }
   } catch (error) {
     console.error('PDF export error:', error)
     return NextResponse.json(
