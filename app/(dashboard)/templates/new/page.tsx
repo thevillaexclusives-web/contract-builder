@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Editor from '@/components/contract-editor/Editor'
+import Editor from '@/components/contract-editor-v2/Editor'
 import type { JSONContent } from '@tiptap/core'
 
 export default function NewTemplatePage() {

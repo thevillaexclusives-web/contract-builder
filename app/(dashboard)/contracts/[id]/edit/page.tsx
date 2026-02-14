@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import Editor from '@/components/contract-editor/Editor'
+import Editor from '@/components/contract-editor-v2/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
 import { Save, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown } from 'lucide-react'

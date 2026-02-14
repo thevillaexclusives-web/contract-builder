@@ -71,9 +71,12 @@
 /* TipTap Editor Styles */
 .ProseMirror {
   outline: none;
-  font-size: 16px; /* Default font size */
-  /* Allow content to expand naturally, don't constrain height */
+  font-size: 16px;
   overflow: visible;
+  max-width: none;
+  width: 100%;
+  padding: 120px 64px 24px 64px;
+  box-sizing: border-box;
 }
 
 .ProseMirror p {
@@ -412,4 +415,59 @@
 .ProseMirror table th {
   padding: 8px 12px;
   line-height: 1.5;
+}
+
+/* ============================================
+   V2 EDITOR STYLES (overlay-based pagination)
+   ============================================ */
+
+/* V2 Editor Shell */
+.editor-v2-container {
+  background: #e5e5e5;
+  padding: 40px 20px;
+  min-height: 100vh;
+  overflow-y: auto;
+}
+
+.editor-v2-shell {
+  position: relative;
+  width: 794px;
+  margin: 0 auto;
+}
+
+/* V2 ProseMirror */
+.editor-v2-shell .ProseMirror {
+  width: 794px;
+  padding: 120px 64px 24px 64px;
+  background: transparent;
+  outline: none;
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  min-height: 1123px;
+}
+
+/* V2 Overlay */
+.editor-v2-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.editor-v2-page-rect {
+  position: absolute;
+  width: 794px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.editor-v2-page-footer {
+  position: absolute;
+  right: 64px;
+  font-size: 11px;
+  color: #999;
 }
