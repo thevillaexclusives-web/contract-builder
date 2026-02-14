@@ -1,76 +1,80 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import type { Editor } from '@tiptap/core'
 import { PAGE_CONFIG, contentUsableHeight } from '../config/pageConfig'
+import type { PageBreakInfo } from '../extensions/pagination-spacers'
 
-interface PaginationResult {
-  pageCount: number
-  pageBreakOffsets: number[]
-}
+const SPACER_HEIGHT =
+  PAGE_CONFIG.headerHeight +
+  PAGE_CONFIG.footerHeight +
+  PAGE_CONFIG.gap +
+  PAGE_CONFIG.paddingTop +
+  PAGE_CONFIG.paddingBottom // 96 + 72 + 24 + 24 + 24 = 240
 
-export function usePagination(editor: Editor | null): PaginationResult {
-  const [result, setResult] = useState<PaginationResult>({
-    pageCount: 1,
-    pageBreakOffsets: [],
-  })
+export function usePagination(editor: Editor | null): { pageCount: number } {
   const rafRef = useRef<number>(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevBreaksRef = useRef<string>('')
+  const pageCountRef = useRef(1)
 
   const measure = useCallback(() => {
     if (!editor || editor.isDestroyed) return
 
-    const proseMirror = editor.view.dom
+    const view = editor.view
+    const proseMirror = view.dom
     if (!proseMirror) return
 
-    const blocks = proseMirror.querySelectorAll(':scope > *')
+    // Collect top-level block elements, skipping spacers
+    const allChildren = proseMirror.querySelectorAll(':scope > *')
+    const blocks: HTMLElement[] = []
+    allChildren.forEach((el) => {
+      if (!(el as HTMLElement).classList.contains('pagination-spacer')) {
+        blocks.push(el as HTMLElement)
+      }
+    })
+
     if (blocks.length === 0) {
-      setResult({ pageCount: 1, pageBreakOffsets: [] })
+      if (editor.storage.paginationSpacers) {
+        editor.storage.paginationSpacers.breakInfos = []
+        // Trigger decoration rebuild
+        view.dispatch(view.state.tr.setMeta('paginationSpacers', true))
+      }
       return
     }
 
-    const containerRect = proseMirror.getBoundingClientRect()
-    const containerTop = containerRect.top
-
     let currentPageHeight = 0
-    const offsets: number[] = []
+    const breakInfos: PageBreakInfo[] = []
 
-    blocks.forEach((block) => {
-      const el = block as HTMLElement
-
-      // Check if this is a page break node
+    for (const el of blocks) {
       const isPageBreak = el.getAttribute('data-type') === 'page-break'
-
-      const rect = el.getBoundingClientRect()
-      const blockTop = rect.top - containerTop
-      const blockHeight = rect.height
+      const blockHeight = el.getBoundingClientRect().height
 
       if (isPageBreak) {
-        // Page break always forces a new page
-        offsets.push(blockTop)
+        // Find ProseMirror position for this DOM element
+        const pos = view.posAtDOM(el, 0)
+        breakInfos.push({ pos, spacerHeight: SPACER_HEIGHT })
         currentPageHeight = 0
-        return
+        continue
       }
 
-      // Check if adding this block exceeds the usable height
       if (currentPageHeight + blockHeight > contentUsableHeight && currentPageHeight > 0) {
-        offsets.push(blockTop)
+        const pos = view.posAtDOM(el, 0)
+        breakInfos.push({ pos, spacerHeight: SPACER_HEIGHT })
         currentPageHeight = blockHeight
       } else {
         currentPageHeight += blockHeight
       }
-    })
+    }
 
-    const pageCount = offsets.length + 1
+    // Only update if breaks changed
+    const key = breakInfos.map((b) => `${b.pos}`).join(',')
+    if (key === prevBreaksRef.current) return
+    prevBreaksRef.current = key
+    pageCountRef.current = breakInfos.length + 1
 
-    setResult((prev) => {
-      if (
-        prev.pageCount === pageCount &&
-        prev.pageBreakOffsets.length === offsets.length &&
-        prev.pageBreakOffsets.every((v, i) => Math.abs(v - offsets[i]) < 1)
-      ) {
-        return prev
-      }
-      return { pageCount, pageBreakOffsets: offsets }
-    })
+    if (editor.storage.paginationSpacers) {
+      editor.storage.paginationSpacers.breakInfos = breakInfos
+      view.dispatch(view.state.tr.setMeta('paginationSpacers', true))
+    }
   }, [editor])
 
   const debouncedMeasure = useCallback(() => {
@@ -88,17 +92,13 @@ export function usePagination(editor: Editor | null): PaginationResult {
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
 
-    // Initial measurement after fonts load
     document.fonts.ready.then(debouncedMeasure)
 
-    // Editor update handler
     const onUpdate = () => debouncedMeasure()
     editor.on('update', onUpdate)
 
-    // Window resize
     window.addEventListener('resize', debouncedMeasure)
 
-    // Image load observer — watch for images loading inside the editor
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         mutation.addedNodes.forEach((node) => {
@@ -118,7 +118,6 @@ export function usePagination(editor: Editor | null): PaginationResult {
 
     observer.observe(editor.view.dom, { childList: true, subtree: true })
 
-    // Initial measure
     debouncedMeasure()
 
     return () => {
@@ -130,5 +129,5 @@ export function usePagination(editor: Editor | null): PaginationResult {
     }
   }, [editor, debouncedMeasure])
 
-  return result
+  return { pageCount: pageCountRef.current }
 }

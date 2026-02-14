@@ -18,6 +18,7 @@ import Toolbar from '@/components/contract-editor/Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
+import { PaginationSpacers } from './extensions/pagination-spacers'
 import { EditorShell } from './components/EditorShell'
 import { usePagination } from './hooks/usePagination'
 
@@ -54,6 +55,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         FontSize,
         FieldNode,
         PageBreak,
+        PaginationSpacers,
       ],
       content: content || {
         type: 'doc',
@@ -125,7 +127,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       },
     })
 
-    const { pageCount, pageBreakOffsets } = usePagination(editor)
+    const { pageCount } = usePagination(editor)
 
     // Update mode in storage when it changes
     useEffect(() => {
@@ -173,7 +175,6 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         <EditorShell
           editor={editor}
           pageCount={pageCount}
-          pageBreakOffsets={pageBreakOffsets}
         />
       </div>
     )

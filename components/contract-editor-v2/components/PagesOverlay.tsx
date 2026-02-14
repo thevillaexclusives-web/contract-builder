@@ -3,10 +3,9 @@ import { PAGE_CONFIG } from '../config/pageConfig'
 
 interface PagesOverlayProps {
   pageCount: number
-  pageBreakOffsets: number[]
 }
 
-export function PagesOverlay({ pageCount, pageBreakOffsets }: PagesOverlayProps) {
+export function PagesOverlay({ pageCount }: PagesOverlayProps) {
   const pages = Array.from({ length: pageCount }, (_, i) => i)
 
   return (
@@ -23,7 +22,6 @@ export function PagesOverlay({ pageCount, pageBreakOffsets }: PagesOverlayProps)
               height: PAGE_CONFIG.height,
             }}
           >
-            {/* Footer with page number */}
             <div
               className="editor-v2-page-footer"
               style={{
