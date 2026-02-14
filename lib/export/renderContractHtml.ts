@@ -66,8 +66,8 @@ export function renderContractHtml(
       padding: 0;
       background: #fff;
       color: #000;
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 12pt;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 16px;
       line-height: 1.5;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -76,7 +76,7 @@ export function renderContractHtml(
     /* Pre-pagination: flow container holds raw content */
     #flow {
       width: 210mm;
-      padding: 24mm 20mm;
+      padding: 6.35mm 16.9mm;
     }
 
     /* Post-pagination: hide flow, show pages */
@@ -85,7 +85,8 @@ export function renderContractHtml(
     section.page {
       width: 210mm;
       height: 297mm;
-      position: relative;
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
       page-break-after: always;
       break-after: page;
@@ -96,18 +97,21 @@ export function renderContractHtml(
     }
 
     section.page > header {
-      height: 25.4mm;
-      padding: 6.35mm 16.9mm 0 16.9mm;
+      flex: 0 0 25.4mm;
+      padding: 0 16.9mm;
     }
 
     section.page > main {
-      height: calc(297mm - 25.4mm - 19.0mm - 6.35mm - 6.35mm);
-      padding: 0 16.9mm;
+      flex: 1;
+      padding: 6.35mm 16.9mm; /* top+bottom now match editor paddingTop/paddingBottom */
       overflow: hidden;
     }
 
+    section.page > main > :first-child { margin-top: 0 !important; }
+    section.page > main > :last-child { margin-bottom: 0 !important; }
+
     section.page > footer {
-      height: 19.0mm;
+      flex: 0 0 19.0mm;
       padding: 0 16.9mm 6.35mm 16.9mm;
       display: flex;
       align-items: center;
@@ -125,6 +129,12 @@ export function renderContractHtml(
     h6 { font-size: 9pt; font-weight: 700; margin-bottom: 2pt; }
 
     p { margin-bottom: 6pt; }
+
+    main p:empty::before,
+    #flow p:empty::before { content: "\\00a0"; }
+
+    main p:empty,
+    #flow p:empty { min-height: 1em; }
 
     ul, ol { padding-left: 24pt; margin-bottom: 6pt; }
     li { margin-bottom: 2pt; }
@@ -191,8 +201,8 @@ export function renderContractHtml(
       var flow = document.getElementById('flow');
       if (!flow) return;
 
-      // Collect all top-level child nodes from flow
-      var children = Array.from(flow.childNodes);
+      // Collect all top-level elements from flow
+      var children = Array.from(flow.children);
 
       // Helper: create a new page section
       function createPage() {
@@ -219,13 +229,10 @@ export function renderContractHtml(
       var currentMain = currentPage.querySelector('main');
 
       for (var i = 0; i < children.length; i++) {
-        var node = children[i];
-
-        // Skip whitespace-only text nodes
-        if (node.nodeType === 3 && !node.textContent.trim()) continue;
+        var el = children[i];
 
         // Check for page-break node
-        if (node.nodeType === 1 && node.getAttribute('data-type') === 'page-break') {
+        if (el.getAttribute('data-type') === 'page-break') {
           // Force new page, do not render the page-break marker
           currentPage = createPage();
           document.body.appendChild(currentPage);
@@ -234,20 +241,30 @@ export function renderContractHtml(
           continue;
         }
 
-        // Append node to current main
-        currentMain.appendChild(node);
+        // Append element to current main
+        currentMain.appendChild(el);
 
-        // Check overflow
-        if (currentMain.scrollHeight > currentMain.clientHeight) {
+        function overflows(main) {
+          const r = main.getBoundingClientRect()
+          // subtract a tiny tolerance
+          const bottom = r.bottom - 0.5
+          const last = main.lastElementChild
+          if (!last) return false
+          const lr = last.getBoundingClientRect()
+          return lr.bottom > bottom
+        }
+
+        // Check overflow (1px tolerance for sub-pixel rounding)
+        if (overflows(currentMain)) {
           // Remove from current, start new page
-          currentMain.removeChild(node);
+          currentMain.removeChild(el);
 
           currentPage = createPage();
           document.body.appendChild(currentPage);
           pages.push(currentPage);
           currentMain = currentPage.querySelector('main');
 
-          currentMain.appendChild(node);
+          currentMain.appendChild(el);
         }
       }
 
@@ -260,6 +277,9 @@ export function renderContractHtml(
 
       // Mark body as paginated to swap visibility
       document.body.classList.add('paginated');
+
+      // Signal pagination complete
+      window.__PAGINATION_DONE__ = true;
     })();
   </script>
 </body>

@@ -63,6 +63,9 @@ export async function POST(
     // Render TipTap JSON to full HTML document
     const html = renderContractHtml(content, contractName)
 
+    console.log('🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶');
+    console.log('html:', html);
+
     // Launch Puppeteer
     let browser
     try {
