@@ -1,4 +1,4 @@
-import { generateHTML } from '@tiptap/core'
+import { generateHTML } from '@tiptap/html'
 import type { JSONContent } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
