@@ -166,7 +166,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     return (
       <div className={className}>
         {showToolbar && (
-          <div className="max-w-[794px] mx-auto mb-0">
+          <div className="sticky top-0 z-50 mx-auto mb-0">
             <div className="border rounded-t-lg bg-white">
               <Toolbar editor={editor} />
             </div>
