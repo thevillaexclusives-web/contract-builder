@@ -13,6 +13,7 @@ import { FontSize } from '@tiptap/extension-font-size'
 import { CustomOrderedList } from '@/components/contract-editor-v2/extensions/custom-ordered-list'
 import { FieldNode } from '@/components/contract-editor-v2/extensions/field-node'
 import { PageBreak } from '@/components/contract-editor-v2/extensions/page-break'
+import { LineHeight } from '@/components/contract-editor-v2/extensions/line-height'
 
 const extensions = [
   StarterKit.configure({
@@ -34,6 +35,7 @@ const extensions = [
   FontSize,
   FieldNode,
   PageBreak,
+  LineHeight,
 ]
 
 // Header/footer use same extensions minus PageBreak
@@ -315,6 +317,12 @@ export function renderContractHtml(
     section.page > header .field-node,
     section.page > footer .field-node {
       font-size: inherit;
+    }
+
+    /* Field nodes inside tables: no underline */
+    td .field-node,
+    th .field-node {
+      border-bottom: none !important;
     }
   </style>
 </head>

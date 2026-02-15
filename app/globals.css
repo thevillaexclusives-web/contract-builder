@@ -169,6 +169,16 @@
   font-family: inherit;
 }
 
+/* Field nodes inside tables: no underline */
+.ProseMirror td .field-node,
+.ProseMirror th .field-node {
+  border-bottom: none !important;
+}
+.ProseMirror td .field-node .field-input,
+.ProseMirror th .field-node .field-input {
+  border-bottom: none !important;
+}
+
 /* Template mode: Placeholder style */
 .ProseMirror .field-node[data-field-value=""] {
   border-bottom: 2px dashed #ccc;
@@ -488,6 +498,12 @@
   font-size: inherit;
   font-family: inherit;
   border-bottom: 1px solid #333;
+}
+
+/* Field nodes inside tables in header/footer: no underline */
+.editor-v2-hf-region td .field-node,
+.editor-v2-hf-region th .field-node {
+  border-bottom: none !important;
 }
 
 .editor-v2-hf-region:hover {

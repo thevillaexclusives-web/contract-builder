@@ -18,6 +18,7 @@ import Toolbar from '@/components/contract-editor/Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
+import { LineHeight } from './extensions/line-height'
 import { PaginationSpacers } from './extensions/pagination-spacers'
 import { EditorShell } from './components/EditorShell'
 import TableBubbleMenu from './components/TableBubbleMenu'
@@ -61,6 +62,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         FontSize,
         FieldNode,
         PageBreak,
+        LineHeight,
         PaginationSpacers,
       ],
       content: content || {
@@ -278,7 +280,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
 
     return (
       <div className={className}>
-        {showToolbar && (
+        {showToolbar && mode !== 'contract' && (
           <div className="sticky top-0 z-50 mx-auto mb-0">
             <div className="border rounded-t-lg bg-white">
               <Toolbar editor={activeEditor} />

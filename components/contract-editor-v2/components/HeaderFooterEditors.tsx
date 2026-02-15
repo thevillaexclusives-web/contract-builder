@@ -16,6 +16,7 @@ import type { JSONContent, Editor } from '@tiptap/core'
 import type { ActiveRegion, EditorMode } from '@/types/editor'
 import { CustomOrderedList } from '../extensions/custom-ordered-list'
 import { FieldNode } from '../extensions/field-node'
+import { LineHeight } from '../extensions/line-height'
 import { PAGE_CONFIG } from '../config/pageConfig'
 
 const hfExtensions = [
@@ -31,6 +32,7 @@ const hfExtensions = [
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   FontSize,
   FieldNode,
+  LineHeight,
 ]
 
 const emptyDoc: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }

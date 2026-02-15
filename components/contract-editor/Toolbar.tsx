@@ -22,6 +22,7 @@ import TextAlignDropdown from './TextAlignDropdown'
 import FontSizeDropdown from './FontSizeDropdown'
 import FontFamilyDropdown from './FontFamilyDropdown'
 import FieldInsertDropdown from './FieldInsertDropdown'
+import LineHeightDropdown from './LineHeightDropdown'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -170,6 +171,7 @@ export default function Toolbar({ editor }: ToolbarProps) {
       {/* Font Controls */}
       <FontFamilyDropdown editor={editor} />
       <FontSizeDropdown editor={editor} />
+      <LineHeightDropdown editor={editor} />
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
 
