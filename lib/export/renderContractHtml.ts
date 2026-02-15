@@ -157,7 +157,6 @@ export function renderContractHtml(
     }
     th {
       font-weight: 700;
-      background-color: #f5f5f5;
     }
 
     /* Blockquotes */
