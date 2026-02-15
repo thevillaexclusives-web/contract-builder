@@ -91,7 +91,7 @@ export const FieldNode = Node.create({
     // Get mode from editor storage
     const mode = 'template' // Default for renderHTML, actual mode handled in addNodeView
     
-    const displayText = label || (value ? value : '____________________________')
+    const displayText = label || (value ? value : '')
     
     return [
       'span',
