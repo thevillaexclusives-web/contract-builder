@@ -1,8 +1,7 @@
 'use client'
 
-import React, { useEffect, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { generateHTML } from '@tiptap/html'
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -63,6 +62,10 @@ export function HeaderFooterEditors({
 }: HeaderFooterEditorsProps) {
   const isEditable = mode === 'template'
 
+  // Live HTML snapshots updated via editor.on('update')
+  const [headerHtml, setHeaderHtml] = useState('')
+  const [footerHtml, setFooterHtml] = useState('')
+
   const headerEditor = useEditor({
     extensions: hfExtensions,
     content: headerContent || emptyDoc,
@@ -122,24 +125,23 @@ export function HeaderFooterEditors({
     }
   }, [footerContent, footerEditor])
 
-  // Generate preview HTML for non-page-0 pages
-  const headerHtml = useMemo(() => {
-    if (!headerEditor) return ''
-    try {
-      return generateHTML(headerEditor.getJSON(), hfExtensions)
-    } catch {
-      return ''
-    }
-  }, [headerEditor, headerContent])
+  // Subscribe to editor updates to keep preview HTML in sync live.
+  // Listeners are added once when editor instances are created and cleaned up on unmount.
+  useEffect(() => {
+    if (!headerEditor) return
+    const updateHtml = () => setHeaderHtml(headerEditor.getHTML())
+    updateHtml() // initial
+    headerEditor.on('update', updateHtml)
+    return () => { headerEditor.off('update', updateHtml) }
+  }, [headerEditor])
 
-  const footerHtml = useMemo(() => {
-    if (!footerEditor) return ''
-    try {
-      return generateHTML(footerEditor.getJSON(), hfExtensions)
-    } catch {
-      return ''
-    }
-  }, [footerEditor, footerContent])
+  useEffect(() => {
+    if (!footerEditor) return
+    const updateHtml = () => setFooterHtml(footerEditor.getHTML())
+    updateHtml() // initial
+    footerEditor.on('update', updateHtml)
+    return () => { footerEditor.off('update', updateHtml) }
+  }, [footerEditor])
 
   const handleHeaderDblClick = useCallback(() => {
     if (isEditable) {
@@ -155,10 +157,34 @@ export function HeaderFooterEditors({
     }
   }, [isEditable, onRegionChange, footerEditor])
 
+  // Outside-click: mousedown on the hf-layer background (not on an active region's editor)
+  // exits header/footer editing.
+  const layerRef = useRef<HTMLDivElement>(null)
+  const handleLayerMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Only act when a header/footer region is active
+      if (activeRegion !== 'header' && activeRegion !== 'footer') return
+
+      const target = e.target as HTMLElement
+
+      // If the click landed inside the active region's editor, let it through
+      if (target.closest('.editor-v2-hf-region.active')) return
+
+      // Click was on page background, inactive region, or another page's preview → exit
+      onRegionChange('body')
+    },
+    [activeRegion, onRegionChange]
+  )
+
   const pages = Array.from({ length: pageCount }, (_, i) => i)
 
   return (
-    <div className="editor-v2-hf-layer">
+    <div
+      ref={layerRef}
+      className="editor-v2-hf-layer"
+      style={activeRegion === 'header' || activeRegion === 'footer' ? { pointerEvents: 'auto' } : undefined}
+      onMouseDown={handleLayerMouseDown}
+    >
       {pages.map((i) => {
         const pageTop = i * (PAGE_CONFIG.height + PAGE_CONFIG.gap)
         const headerTop = pageTop + PAGE_CONFIG.paddingTop
