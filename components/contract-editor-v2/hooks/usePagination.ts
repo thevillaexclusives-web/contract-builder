@@ -84,14 +84,27 @@ export function usePagination(
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current)
       }
-      rafRef.current = requestAnimationFrame(measure)
+      // Double-RAF: let layout settle before measuring
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(measure)
+      })
     }, 50)
   }, [measure])
+
+  // Re-paginate when hfHeights change (separate from the editor-lifecycle effect)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    debouncedMeasure()
+  }, [hfHeights, editor, debouncedMeasure])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
 
-    document.fonts.ready.then(debouncedMeasure)
+    // Wait for web fonts before first measurement
+    document.fonts?.ready.then(() => {
+      // Double-RAF after fonts: ensures layout is fully settled
+      requestAnimationFrame(() => requestAnimationFrame(measure))
+    })
 
     const onUpdate = () => debouncedMeasure()
     editor.on('update', onUpdate)
@@ -126,7 +139,7 @@ export function usePagination(
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
-  }, [editor, debouncedMeasure])
+  }, [editor, debouncedMeasure, measure])
 
   return { pageCount }
 }

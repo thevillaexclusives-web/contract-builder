@@ -22,6 +22,7 @@ import { PaginationSpacers } from './extensions/pagination-spacers'
 import { EditorShell } from './components/EditorShell'
 import TableBubbleMenu from './components/TableBubbleMenu'
 import { usePagination } from './hooks/usePagination'
+import { PAGE_CONFIG } from './config/pageConfig'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -133,8 +134,8 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     })
 
     const [hfHeights, setHfHeights] = useState<{ headerH: number; footerH: number }>({
-      headerH: 0,
-      footerH: 0,
+      headerH: PAGE_CONFIG.headerHeight,
+      footerH: PAGE_CONFIG.footerHeight,
     })
     const { pageCount } = usePagination(editor, hfHeights)
     const prevModeRef = useRef(mode)
