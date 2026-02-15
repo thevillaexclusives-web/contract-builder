@@ -11,7 +11,7 @@ import { FontFamily } from '@tiptap/extension-font-family'
 import { Underline } from '@tiptap/extension-underline'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { FontSize } from '@tiptap/extension-font-size'
-import { useEffect, useImperativeHandle, forwardRef } from 'react'
+import { useEffect, useImperativeHandle, forwardRef, useRef } from 'react'
 import type { JSONContent } from '@tiptap/core'
 import type { EditorProps, EditorRef } from '@/types/editor'
 import Toolbar from '@/components/contract-editor/Toolbar'
@@ -128,13 +128,55 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     })
 
     const { pageCount } = usePagination(editor)
+    const prevModeRef = useRef(mode)
 
-    // Update mode in storage when it changes
+    // Update mode in storage when it changes + convert underscores to fields on contract switch
     useEffect(() => {
-      if (editor) {
-        editor.storage.mode = mode
-        editor.view.dispatch(editor.state.tr)
+      if (!editor) return
+
+      const prevMode = prevModeRef.current
+      prevModeRef.current = mode
+      editor.storage.mode = mode
+
+      // When switching to contract mode, convert underscore sequences to field nodes
+      if (mode === 'contract' && prevMode !== 'contract') {
+        const { state } = editor
+        const { tr } = state
+        const regex = /_{5,}/g
+        let replaced = false
+
+        state.doc.descendants((node, pos) => {
+          if (!node.isText || !node.text) return
+          const text = node.text
+          let match: RegExpExecArray | null
+          // Collect matches in reverse so positions stay valid
+          const matches: { from: number; to: number }[] = []
+          while ((match = regex.exec(text)) !== null) {
+            matches.push({
+              from: pos + match.index,
+              to: pos + match.index + match[0].length,
+            })
+          }
+          for (let i = matches.length - 1; i >= 0; i--) {
+            const m = matches[i]
+            const fieldNode = state.schema.nodes.field.create({
+              id: `field-${Date.now()}-${m.from}`,
+              label: '',
+              value: '',
+              type: 'text',
+            })
+            tr.replaceWith(m.from, m.to, fieldNode)
+            replaced = true
+          }
+        })
+
+        if (replaced) {
+          editor.view.dispatch(tr)
+          return
+        }
       }
+
+      editor.view.dispatch(editor.state.tr)
     }, [editor, mode])
 
     // Update content when prop changes
