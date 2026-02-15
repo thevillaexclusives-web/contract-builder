@@ -130,6 +130,8 @@ export function renderContractHtml(
       width: 210mm;
       padding: 6.35mm 16.9mm;
     }
+    #flow > :first-child { margin-top: 0 !important; }
+    #flow > :last-child { margin-bottom: 0 !important; }
 
     /* Post-pagination: hide flow, show pages */
     body.paginated #flow { display: none; }
@@ -184,76 +186,96 @@ export function renderContractHtml(
       padding: 0 16.9mm 6.35mm 16.9mm;
     }
 
-    /* Typography */
-    h1 { font-size: 24pt; font-weight: 700; margin-bottom: 8pt; }
-    h2 { font-size: 18pt; font-weight: 700; margin-bottom: 6pt; }
-    h3 { font-size: 14pt; font-weight: 700; margin-bottom: 4pt; }
-    h4 { font-size: 12pt; font-weight: 700; margin-bottom: 4pt; }
-    h5 { font-size: 10pt; font-weight: 700; margin-bottom: 2pt; }
-    h6 { font-size: 9pt; font-weight: 700; margin-bottom: 2pt; }
+    /*
+     * Typography — mirrors editor CSS (.ProseMirror rules in globals.css).
+     * Uses em/px units (not pt) to match browser-rendered editor spacing.
+     */
 
-    p { margin-bottom: 6pt; }
+    /* Paragraphs: editor uses margin: 0 0 0.5em 0; line-height: 1.5; font-size: 16px */
+    p {
+      font-size: 16px;
+      margin: 0 0 0.5em 0;
+      line-height: 1.5;
+    }
 
-    main p:empty::before,
-    #flow p:empty::before { content: "\\00a0"; }
+    /* Empty paragraphs (user spacing) must take up a full line */
+    p:empty::before { content: "\\00a0"; }
+    p:empty { min-height: 1em; }
 
-    main p:empty,
-    #flow p:empty { min-height: 1em; }
+    /* Headings: editor uses margin: 1em 0 0.5em 0; line-height: 1.3 */
+    h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    h2 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    h3 { font-size: 1.17em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    h4 { font-size: 1em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    h5 { font-size: 0.83em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    h6 { font-size: 0.67em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
 
-    ul, ol { padding-left: 24pt; margin-bottom: 6pt; }
-    li { margin-bottom: 2pt; }
+    /* Lists: editor uses margin: 0.5em 0; padding-left: 1.5em; line-height: 1.5 */
+    ul, ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+      line-height: 1.5;
+    }
+
+    /* List items: editor uses margin: 0.25em 0; line-height: 1.5 */
+    li {
+      margin: 0.25em 0;
+      line-height: 1.5;
+    }
 
     strong { font-weight: 700; }
     em { font-style: italic; }
     u { text-decoration: underline; }
 
-    /* Tables */
+    /* Tables: editor uses margin: 1em 0; td/th padding: 8px 12px; line-height: 1.5 */
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 8pt;
+      margin: 1em 0;
     }
     th, td {
       border: 1px solid #000;
-      padding: 4pt 6pt;
+      padding: 8px 12px;
       text-align: left;
       vertical-align: top;
+      line-height: 1.5;
     }
     th {
       font-weight: 700;
     }
 
-    /* Blockquotes */
+    /* Blockquotes: editor uses margin: 1em 0; padding-left: 1em; border-left: 3px solid #ddd */
     blockquote {
-      border-left: 3pt solid #ccc;
-      padding-left: 10pt;
-      margin-left: 0;
-      margin-bottom: 6pt;
+      border-left: 3px solid #ddd;
+      padding-left: 1em;
+      margin: 1em 0;
+      line-height: 1.5;
     }
 
     /* Code */
     code {
       font-family: 'Courier New', Courier, monospace;
-      font-size: 10pt;
+      font-size: 0.875em;
       background: #f4f4f4;
-      padding: 1pt 3pt;
-      border-radius: 2pt;
+      padding: 1px 3px;
+      border-radius: 2px;
     }
     pre {
       font-family: 'Courier New', Courier, monospace;
-      font-size: 10pt;
+      font-size: 0.875em;
       background: #f4f4f4;
-      padding: 8pt;
-      margin-bottom: 6pt;
+      padding: 8px;
+      margin: 0.5em 0;
       white-space: pre-wrap;
       word-wrap: break-word;
+      line-height: 1.5;
     }
 
     /* Horizontal rule */
     hr {
       border: none;
-      border-top: 1pt solid #000;
-      margin: 8pt 0;
+      border-top: 1px solid #000;
+      margin: 8px 0;
     }
 
     /* Field nodes */
