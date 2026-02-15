@@ -49,13 +49,13 @@ function isDocEmpty(json: JSONContent | undefined): boolean {
 }
 
 /**
- * Post-process HTML so empty/whitespace-only paragraphs retain line height.
- * generateHTML produces <p></p> for empty paragraphs, which collapses in
- * Chromium. ProseMirror renders them as <p><br></p> so they keep height.
- * Handles: <p></p>, <p> </p>, <p>\n</p>, and paragraphs with only attributes.
+ * Mark empty/whitespace-only paragraphs so CSS can give them a stable line box.
+ * generateHTML produces <p></p> for empty paragraphs. We keep them truly empty
+ * (no &nbsp; text node) and add data-empty so CSS ::before + min-height applies.
+ * This matches ProseMirror's rendered height for empty paragraphs.
  */
-function preserveEmptyParagraphs(html: string): string {
-  return html.replace(/<p([^>]*)>(\s*)<\/p>/g, '<p$1>&nbsp;</p>')
+function markEmptyParagraphs(html: string): string {
+  return html.replace(/<p([^>]*)>(\s*)<\/p>/g, '<p$1 data-empty="true"></p>')
 }
 
 export function renderContractHtml(
@@ -64,7 +64,7 @@ export function renderContractHtml(
   headerJson?: JSONContent,
   footerJson?: JSONContent
 ): string {
-  const bodyHtml = preserveEmptyParagraphs(generateHTML(bodyJson, extensions))
+  const bodyHtml = markEmptyParagraphs(generateHTML(bodyJson, extensions))
 
   const hasHeader = !isDocEmpty(headerJson)
   const hasFooter = !isDocEmpty(footerJson)
@@ -72,7 +72,7 @@ export function renderContractHtml(
   let headerHtml = ''
   if (hasHeader && headerJson) {
     try {
-      headerHtml = preserveEmptyParagraphs(generateHTML(headerJson, hfExtensions))
+      headerHtml = markEmptyParagraphs(generateHTML(headerJson, hfExtensions))
     } catch {
       headerHtml = ''
     }
@@ -81,7 +81,7 @@ export function renderContractHtml(
   let footerHtml = ''
   if (hasFooter && footerJson) {
     try {
-      footerHtml = preserveEmptyParagraphs(generateHTML(footerJson, hfExtensions))
+      footerHtml = markEmptyParagraphs(generateHTML(footerJson, hfExtensions))
     } catch {
       footerHtml = ''
     }
@@ -212,11 +212,16 @@ export function renderContractHtml(
       line-height: 1.5;
     }
 
-    /* Empty paragraphs (user spacing) must take up a full line */
+    /* Empty paragraphs (user spacing) must take up a full line.
+       data-empty is added by markEmptyParagraphs(); p:empty is fallback. */
+    main p[data-empty]::before,
     main p:empty::before,
+    #flow p[data-empty]::before,
     #flow p:empty::before { content: "\\00a0"; }
+    main p[data-empty],
     main p:empty,
-    #flow p:empty { min-height: 1em; }
+    #flow p[data-empty],
+    #flow p:empty { min-height: 1em; display: block; }
 
     /* Headings: editor uses margin: 1em 0 0.5em 0; line-height: 1.3 */
     main h1, #flow h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
@@ -413,9 +418,7 @@ export function renderContractHtml(
           currentMain = currentPage.querySelector('main');
 
           currentMain.appendChild(el);
-
           // If a single block is taller than a page, accept it (don't loop)
-          // — it will be clipped by overflow:hidden, same as editor behavior.
         }
       }
 
