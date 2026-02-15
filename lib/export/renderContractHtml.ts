@@ -159,7 +159,7 @@ export function renderContractHtml(
       font-size: 16px;
       line-height: 1.5;
     }
-    /* Header/footer p inherits container font-size; inline fontSize marks override */
+    /* Header/footer p inherits 12px; inline fontSize span marks override when present */
     section.page > header p,
     section.page > footer p {
       font-size: inherit;
@@ -181,7 +181,7 @@ export function renderContractHtml(
       min-height: 19mm; /* 72px — matches editor PAGE_CONFIG.footerHeight */
       padding: 0 16.9mm 6.35mm 16.9mm;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: 16px;
+      font-size: 12px;
       line-height: 1.5;
     }
 
@@ -195,8 +195,8 @@ export function renderContractHtml(
     }
 
     /*
-     * Body typography — scoped to main/#flow to avoid double-applying
-     * on header/footer (which inherit 16px and use their own p rule above).
+     * Body typography — scoped to main/#flow only.
+     * Header/footer use 12px inherited from their container.
      * Mirrors editor CSS (.ProseMirror rules in globals.css).
      */
 
