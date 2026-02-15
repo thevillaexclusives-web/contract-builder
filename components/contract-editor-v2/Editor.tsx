@@ -142,23 +142,47 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       if (mode === 'contract' && prevMode !== 'contract') {
         const { state } = editor
         const { tr } = state
-        const regex = /_{5,}/g
-        let replaced = false
+        const allMatches: { from: number; to: number }[] = []
 
+        // Walk only textblock nodes (paragraphs, headings, etc.)
         state.doc.descendants((node, pos) => {
-          if (!node.isText || !node.text) return
-          const text = node.text
+          if (!node.isTextblock || !node.content.size) return
+
+          // Build a combined plain string from inline text children,
+          // with a character-index -> absolute-doc-position mapping.
+          // Skip content inside existing field nodes.
+          const posMap: number[] = []
+          let combined = ''
+
+          node.content.forEach((child, offset) => {
+            // Skip existing field nodes (atoms)
+            if (child.type.name === 'field') return
+
+            if (child.isText && child.text) {
+              const absStart = pos + 1 + offset
+              for (let i = 0; i < child.text.length; i++) {
+                posMap.push(absStart + i)
+                combined += child.text[i]
+              }
+            }
+          })
+
+          if (!combined) return
+
+          const regex = /_{5,}/g
           let match: RegExpExecArray | null
-          // Collect matches in reverse so positions stay valid
-          const matches: { from: number; to: number }[] = []
-          while ((match = regex.exec(text)) !== null) {
-            matches.push({
-              from: pos + match.index,
-              to: pos + match.index + match[0].length,
+          while ((match = regex.exec(combined)) !== null) {
+            allMatches.push({
+              from: posMap[match.index],
+              to: posMap[match.index + match[0].length - 1] + 1,
             })
           }
-          for (let i = matches.length - 1; i >= 0; i--) {
-            const m = matches[i]
+        })
+
+        // Apply replacements in reverse order (highest position first) to avoid shifting
+        if (allMatches.length > 0) {
+          allMatches.sort((a, b) => b.from - a.from)
+          for (const m of allMatches) {
             const fieldNode = state.schema.nodes.field.create({
               id: `field-${Date.now()}-${m.from}`,
               label: '',
@@ -166,11 +190,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
               type: 'text',
             })
             tr.replaceWith(m.from, m.to, fieldNode)
-            replaced = true
           }
-        })
-
-        if (replaced) {
           editor.view.dispatch(tr)
           return
         }
