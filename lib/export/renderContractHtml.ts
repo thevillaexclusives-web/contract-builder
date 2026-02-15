@@ -352,9 +352,27 @@ export function renderContractHtml(
         return section;
       }
 
+      // Pin <main> to an explicit pixel height so scrollHeight/clientHeight
+      // comparisons are stable (avoids flex/mm rounding drift).
+      function pinMainHeight(page) {
+        var h = page.querySelector('header');
+        var m = page.querySelector('main');
+        var f = page.querySelector('footer');
+        var pageH = page.getBoundingClientRect().height;
+        var headerH = h.getBoundingClientRect().height;
+        var footerH = f.getBoundingClientRect().height;
+        m.style.height = (pageH - headerH - footerH) + 'px';
+        m.style.flex = '0 0 auto';
+      }
+
+      function overflows(main) {
+        return (main.scrollHeight - main.clientHeight) > 0.25;
+      }
+
       var pages = [];
       var currentPage = createPage();
       document.body.appendChild(currentPage);
+      pinMainHeight(currentPage);
       pages.push(currentPage);
 
       var currentMain = currentPage.querySelector('main');
@@ -365,6 +383,7 @@ export function renderContractHtml(
         if (el.getAttribute('data-type') === 'page-break') {
           currentPage = createPage();
           document.body.appendChild(currentPage);
+          pinMainHeight(currentPage);
           pages.push(currentPage);
           currentMain = currentPage.querySelector('main');
           continue;
@@ -372,19 +391,19 @@ export function renderContractHtml(
 
         currentMain.appendChild(el);
 
-        function overflows(main) {
-          return main.scrollHeight > main.clientHeight + 1;
-        }
-
         if (overflows(currentMain)) {
           currentMain.removeChild(el);
 
           currentPage = createPage();
           document.body.appendChild(currentPage);
+          pinMainHeight(currentPage);
           pages.push(currentPage);
           currentMain = currentPage.querySelector('main');
 
           currentMain.appendChild(el);
+
+          // If a single block is taller than a page, accept it (don't loop)
+          // — it will be clipped by overflow:hidden, same as editor behavior.
         }
       }
 
