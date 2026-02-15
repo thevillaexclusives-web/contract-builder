@@ -87,6 +87,9 @@ export function renderContractHtml(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(contractName)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     @page {
       size: A4;
@@ -105,7 +108,7 @@ export function renderContractHtml(
       padding: 0;
       background: #fff;
       color: #000;
-      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
       font-size: 16px;
       line-height: 1.5;
       -webkit-print-color-adjust: exact;
@@ -139,6 +142,8 @@ export function renderContractHtml(
       ${headerFlex}
       padding: 6.35mm 16.9mm 0 16.9mm;
       font-size: 12px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      line-height: 1.5;
     }
 
     section.page > main {
@@ -154,6 +159,8 @@ export function renderContractHtml(
       ${footerFlex}
       padding: 0 16.9mm 6.35mm 16.9mm;
       font-size: 12px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      line-height: 1.5;
     }
 
     /* Fallback page number (shown when no custom footer) */
@@ -237,6 +244,24 @@ export function renderContractHtml(
       border: none;
       border-top: 1pt solid #000;
       margin: 8pt 0;
+    }
+
+    /* Field nodes */
+    .field-node {
+      display: inline-block;
+      min-width: 80px;
+      max-width: 300px;
+      padding: 0 4px;
+      vertical-align: baseline;
+      font-size: inherit;
+      font-family: inherit;
+      border-bottom: 1px solid #333;
+    }
+
+    /* Header/footer inherit base font, smaller size */
+    section.page > header .field-node,
+    section.page > footer .field-node {
+      font-size: inherit;
     }
   </style>
 </head>

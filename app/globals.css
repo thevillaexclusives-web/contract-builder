@@ -478,8 +478,16 @@
   box-sizing: border-box;
 }
 
-.editor-v2-hf-region.empty {
-  min-height: 20px; /* clickable area for dblclick even when empty */
+/* Field node in header/footer static previews — match body field styles */
+.editor-v2-hf-region .field-node {
+  display: inline-block;
+  min-width: 80px;
+  max-width: 300px;
+  padding: 0 4px;
+  vertical-align: baseline;
+  font-size: inherit;
+  font-family: inherit;
+  border-bottom: 1px solid #333;
 }
 
 .editor-v2-hf-region:hover {

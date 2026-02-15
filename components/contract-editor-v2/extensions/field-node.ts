@@ -100,7 +100,7 @@ export const FieldNode = Node.create({
         'data-field-label': label,
         'data-field-value': value,
         class: 'field-node',
-        style: 'border-bottom: 1px solid #333; min-width: 300px; display: inline-block; padding: 0 4px;',
+        style: 'border-bottom: 1px solid #333; min-width: 80px; max-width: 300px; display: inline-block; padding: 0 4px;',
       }),
       displayText,
     ]

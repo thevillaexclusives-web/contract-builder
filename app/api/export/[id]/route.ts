@@ -89,7 +89,7 @@ export async function POST(
 
       const page = await browser.newPage()
       await page.setViewport({ width: 1200, height: 800 })
-      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.setContent(html, { waitUntil: 'networkidle2' })
       await page.emulateMediaType('print')
 
       const pdf = await page.pdf({

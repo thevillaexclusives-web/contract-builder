@@ -52,7 +52,7 @@ export function EditorShell({
 
   const bodyPointerEvents = activeRegion === 'header' || activeRegion === 'footer' ? 'none' : 'auto'
 
-  // Body top padding = paddingTop + measured header height (or default headerHeight if no content)
+  // Body padding = page padding + measured hf height (already min-clamped by HeaderFooterEditors)
   const bodyPaddingTop = PAGE_CONFIG.paddingTop + (headerH || PAGE_CONFIG.headerHeight)
   const bodyPaddingBottom = PAGE_CONFIG.paddingBottom + (footerH || PAGE_CONFIG.footerHeight)
 
