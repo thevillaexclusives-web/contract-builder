@@ -11,9 +11,9 @@ import { FontFamily } from '@tiptap/extension-font-family'
 import { Underline } from '@tiptap/extension-underline'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { FontSize } from '@tiptap/extension-font-size'
-import { useEffect, useImperativeHandle, forwardRef, useRef } from 'react'
-import type { JSONContent } from '@tiptap/core'
-import type { EditorProps, EditorRef } from '@/types/editor'
+import { useEffect, useImperativeHandle, forwardRef, useRef, useState, useCallback } from 'react'
+import type { JSONContent, Editor as TiptapEditor } from '@tiptap/core'
+import type { EditorProps, EditorRef, ActiveRegion } from '@/types/editor'
 import Toolbar from '@/components/contract-editor/Toolbar'
 import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
@@ -32,6 +32,10 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       editable = true,
       className = '',
       showToolbar = true,
+      headerContent,
+      footerContent,
+      onHeaderChange,
+      onFooterChange,
     },
     ref
   ) {
@@ -130,6 +134,33 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
 
     const { pageCount } = usePagination(editor)
     const prevModeRef = useRef(mode)
+    const [activeRegion, setActiveRegion] = useState<ActiveRegion>('body')
+    const headerEditorRef = useRef<TiptapEditor | null>(null)
+    const footerEditorRef = useRef<TiptapEditor | null>(null)
+
+    const handleRegionChange = useCallback((region: ActiveRegion) => {
+      setActiveRegion(region)
+    }, [])
+
+    const handleHeaderEditor = useCallback((e: TiptapEditor | null) => {
+      headerEditorRef.current = e
+    }, [])
+
+    const handleFooterEditor = useCallback((e: TiptapEditor | null) => {
+      footerEditorRef.current = e
+    }, [])
+
+    // Escape key exits header/footer editing
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && (activeRegion === 'header' || activeRegion === 'footer')) {
+          setActiveRegion('body')
+          editor?.commands.focus()
+        }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [activeRegion, editor])
 
     // Update mode in storage when it changes + convert underscores to fields on contract switch
     useEffect(() => {
@@ -216,6 +247,11 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       clear: () => {
         editor?.commands.clearContent()
       },
+      getAllContent: () => ({
+        body: editor?.getJSON() || { type: 'doc', content: [] },
+        header: headerEditorRef.current?.getJSON() || { type: 'doc', content: [] },
+        footer: footerEditorRef.current?.getJSON() || { type: 'doc', content: [] },
+      }),
     }))
 
     if (!editor) {
@@ -226,12 +262,17 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       )
     }
 
+    const activeEditor =
+      activeRegion === 'header' ? headerEditorRef.current :
+      activeRegion === 'footer' ? footerEditorRef.current :
+      editor
+
     return (
       <div className={className}>
         {showToolbar && (
           <div className="sticky top-0 z-50 mx-auto mb-0">
             <div className="border rounded-t-lg bg-white">
-              <Toolbar editor={editor} />
+              <Toolbar editor={activeEditor} />
             </div>
           </div>
         )}
@@ -239,6 +280,15 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         <EditorShell
           editor={editor}
           pageCount={pageCount}
+          activeRegion={activeRegion}
+          onRegionChange={handleRegionChange}
+          mode={mode}
+          headerContent={headerContent}
+          footerContent={footerContent}
+          onHeaderChange={onHeaderChange}
+          onFooterChange={onFooterChange}
+          onHeaderEditor={handleHeaderEditor}
+          onFooterEditor={handleFooterEditor}
         />
       </div>
     )

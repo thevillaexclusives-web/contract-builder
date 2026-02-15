@@ -21,16 +21,7 @@ export function PagesOverlay({ pageCount }: PagesOverlayProps) {
               top,
               height: PAGE_CONFIG.height,
             }}
-          >
-            <div
-              className="editor-v2-page-footer"
-              style={{
-                bottom: PAGE_CONFIG.paddingBottom,
-              }}
-            >
-              Page {pageIndex + 1} of {pageCount}
-            </div>
-          </div>
+          />
         )
       })}
     </div>

@@ -463,9 +463,58 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
-.editor-v2-page-footer {
+/* Header/Footer editor layer */
+.editor-v2-hf-layer {
   position: absolute;
-  right: 64px;
-  font-size: 11px;
-  color: #999;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.editor-v2-hf-region {
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.editor-v2-hf-region:hover {
+  outline: 1px dashed rgba(0, 0, 0, 0.15);
+}
+
+.editor-v2-hf-region.active {
+  outline: 2px solid rgba(0, 102, 204, 0.4);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.editor-v2-hf-region .ProseMirror,
+.editor-v2-hf-region .hf-preview {
+  padding: 4px 0;
+  min-height: auto !important;
+  font-size: 12px;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hf-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.editor-v2-hf-region:hover .hf-hint {
+  opacity: 1;
 }
