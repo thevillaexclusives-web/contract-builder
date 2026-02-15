@@ -87,9 +87,10 @@ export function renderContractHtml(
     }
   }
 
-  // Decide header/footer flex basis: auto-size if content, else collapse
-  const headerFlex = hasHeader ? 'flex: 0 0 auto;' : 'flex: 0 0 0; overflow: hidden;'
-  const footerFlex = hasFooter ? 'flex: 0 0 auto;' : 'flex: 0 0 0; overflow: hidden;'
+  // Header/footer always reserve min-height (matching editor's PAGE_CONFIG).
+  // When content exists, flex auto-sizes; when empty, min-height holds space.
+  const headerFlex = 'flex: 0 0 auto;'
+  const footerFlex = 'flex: 0 0 auto;'
 
   return `<!doctype html>
 <html lang="en">
@@ -152,10 +153,18 @@ export function renderContractHtml(
 
     section.page > header {
       ${headerFlex}
+      min-height: 25.4mm; /* 96px — matches editor PAGE_CONFIG.headerHeight */
       padding: 6.35mm 16.9mm 0 16.9mm;
       font-size: 12px;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
       line-height: 1.5;
+    }
+    /* Header/footer p must inherit container font-size, not body 16px */
+    section.page > header p,
+    section.page > footer p {
+      font-size: inherit;
+      margin: 0 0 0.5em 0;
+      line-height: inherit;
     }
 
     section.page > main {
@@ -169,30 +178,30 @@ export function renderContractHtml(
 
     section.page > footer {
       ${footerFlex}
+      min-height: 19mm; /* 72px — matches editor PAGE_CONFIG.footerHeight */
       padding: 0 16.9mm 6.35mm 16.9mm;
-      font-size: 12px;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
       line-height: 1.5;
     }
 
     /* Fallback page number (shown when no custom footer) */
     section.page > footer.page-number-only {
-      flex: 0 0 auto;
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: center;
       font-size: 9pt;
       color: #666;
-      padding: 0 16.9mm 6.35mm 16.9mm;
     }
 
     /*
-     * Typography — mirrors editor CSS (.ProseMirror rules in globals.css).
-     * Uses em/px units (not pt) to match browser-rendered editor spacing.
+     * Body typography — scoped to main/#flow so it doesn't bleed into
+     * header/footer (which use 12px inherited font-size).
+     * Mirrors editor CSS (.ProseMirror rules in globals.css).
      */
 
     /* Paragraphs: editor uses margin: 0 0 0.5em 0; line-height: 1.5; font-size: 16px */
-    p {
+    main p,
+    #flow p {
       font-size: 16px;
       margin: 0 0 0.5em 0;
       line-height: 1.5;
@@ -205,12 +214,12 @@ export function renderContractHtml(
     #flow p:empty { min-height: 1em; }
 
     /* Headings: editor uses margin: 1em 0 0.5em 0; line-height: 1.3 */
-    h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
-    h2 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
-    h3 { font-size: 1.17em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
-    h4 { font-size: 1em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
-    h5 { font-size: 0.83em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
-    h6 { font-size: 0.67em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h1, #flow h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h2, #flow h2 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h3, #flow h3 { font-size: 1.17em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h4, #flow h4 { font-size: 1em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h5, #flow h5 { font-size: 0.83em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
+    main h6, #flow h6 { font-size: 0.67em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
 
     /* Lists: editor uses margin: 0.5em 0; padding-left: 1.5em; line-height: 1.5 */
     ul, ol {
