@@ -107,6 +107,8 @@
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .ProseMirror table th {
@@ -169,20 +171,25 @@
   font-family: inherit;
 }
 
-/* Field nodes inside tables: no underline + fit cell width */
+/* Field nodes inside tables: fit cell width, no underline, no overflow */
 .ProseMirror table td .field-node,
 .ProseMirror table th .field-node {
   display: block;
-  max-width: 100%;
-  border-bottom: none !important;
-}
-.ProseMirror table td .field-input,
-.ProseMirror table th .field-input {
   width: 100%;
   max-width: 100%;
-  min-width: 0;
+  min-width: 0 !important;
+  border-bottom: none !important;
+  overflow: hidden;
+}
+.ProseMirror table td .field-node .field-input,
+.ProseMirror table th .field-node .field-input {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   box-sizing: border-box;
   border-bottom: none !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Template mode: Placeholder style */
@@ -506,10 +513,15 @@
   border-bottom: 1px solid #333;
 }
 
-/* Field nodes inside tables in header/footer: no underline */
+/* Field nodes inside tables in header/footer: fit cell, no underline */
 .editor-v2-hf-region td .field-node,
 .editor-v2-hf-region th .field-node {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0 !important;
   border-bottom: none !important;
+  overflow: hidden;
 }
 
 .editor-v2-hf-region:hover {
