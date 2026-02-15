@@ -155,11 +155,11 @@ export function renderContractHtml(
       ${headerFlex}
       min-height: 25.4mm; /* 96px — matches editor PAGE_CONFIG.headerHeight */
       padding: 6.35mm 16.9mm 0 16.9mm;
-      font-size: 12px;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 16px;
       line-height: 1.5;
     }
-    /* Header/footer p must inherit container font-size, not body 16px */
+    /* Header/footer p inherits container font-size; inline fontSize marks override */
     section.page > header p,
     section.page > footer p {
       font-size: inherit;
@@ -181,6 +181,7 @@ export function renderContractHtml(
       min-height: 19mm; /* 72px — matches editor PAGE_CONFIG.footerHeight */
       padding: 0 16.9mm 6.35mm 16.9mm;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 16px;
       line-height: 1.5;
     }
 
@@ -194,8 +195,8 @@ export function renderContractHtml(
     }
 
     /*
-     * Body typography — scoped to main/#flow so it doesn't bleed into
-     * header/footer (which use 12px inherited font-size).
+     * Body typography — scoped to main/#flow to avoid double-applying
+     * on header/footer (which inherit 16px and use their own p rule above).
      * Mirrors editor CSS (.ProseMirror rules in globals.css).
      */
 
@@ -301,7 +302,7 @@ export function renderContractHtml(
       border-bottom: 1px solid #333;
     }
 
-    /* Header/footer inherit base font, smaller size */
+    /* Header/footer field nodes inherit container font-size */
     section.page > header .field-node,
     section.page > footer .field-node {
       font-size: inherit;
@@ -372,12 +373,7 @@ export function renderContractHtml(
         currentMain.appendChild(el);
 
         function overflows(main) {
-          const r = main.getBoundingClientRect()
-          const bottom = r.bottom - 0.5
-          const last = main.lastElementChild
-          if (!last) return false
-          const lr = last.getBoundingClientRect()
-          return lr.bottom > bottom
+          return main.scrollHeight > main.clientHeight + 1;
         }
 
         if (overflows(currentMain)) {
