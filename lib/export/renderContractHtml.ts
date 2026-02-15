@@ -159,7 +159,11 @@ export function renderContractHtml(
       font-size: 16px;
       line-height: 1.5;
     }
-    /* Header/footer p inherits 12px; inline fontSize span marks override when present */
+    section.page > footer { 
+      font-size: 16px; 
+      line-height: 1.5;
+    }
+    /* Header/footer p inherits 16px; inline fontSize span marks override when present */
     section.page > header p,
     section.page > footer p {
       font-size: inherit;
