@@ -48,13 +48,23 @@ function isDocEmpty(json: JSONContent | undefined): boolean {
   return false
 }
 
+/**
+ * Post-process HTML so empty/whitespace-only paragraphs retain line height.
+ * generateHTML produces <p></p> for empty paragraphs, which collapses in
+ * Chromium. ProseMirror renders them as <p><br></p> so they keep height.
+ * Handles: <p></p>, <p> </p>, <p>\n</p>, and paragraphs with only attributes.
+ */
+function preserveEmptyParagraphs(html: string): string {
+  return html.replace(/<p([^>]*)>(\s*)<\/p>/g, '<p$1>&nbsp;</p>')
+}
+
 export function renderContractHtml(
   tiptapJson: JSONContent,
   contractName: string,
   headerJson?: JSONContent,
   footerJson?: JSONContent
 ): string {
-  const bodyHtml = generateHTML(tiptapJson, extensions)
+  const bodyHtml = preserveEmptyParagraphs(generateHTML(tiptapJson, extensions))
 
   const hasHeader = !isDocEmpty(headerJson)
   const hasFooter = !isDocEmpty(footerJson)
@@ -62,7 +72,7 @@ export function renderContractHtml(
   let headerHtml = ''
   if (hasHeader && headerJson) {
     try {
-      headerHtml = generateHTML(headerJson, hfExtensions)
+      headerHtml = preserveEmptyParagraphs(generateHTML(headerJson, hfExtensions))
     } catch {
       headerHtml = ''
     }
@@ -71,7 +81,7 @@ export function renderContractHtml(
   let footerHtml = ''
   if (hasFooter && footerJson) {
     try {
-      footerHtml = generateHTML(footerJson, hfExtensions)
+      footerHtml = preserveEmptyParagraphs(generateHTML(footerJson, hfExtensions))
     } catch {
       footerHtml = ''
     }
