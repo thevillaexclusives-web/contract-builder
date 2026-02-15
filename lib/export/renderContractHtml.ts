@@ -59,12 +59,12 @@ function preserveEmptyParagraphs(html: string): string {
 }
 
 export function renderContractHtml(
-  tiptapJson: JSONContent,
+  bodyJson: JSONContent,
   contractName: string,
   headerJson?: JSONContent,
   footerJson?: JSONContent
 ): string {
-  const bodyHtml = preserveEmptyParagraphs(generateHTML(tiptapJson, extensions))
+  const bodyHtml = preserveEmptyParagraphs(generateHTML(bodyJson, extensions))
 
   const hasHeader = !isDocEmpty(headerJson)
   const hasFooter = !isDocEmpty(footerJson)
@@ -199,8 +199,10 @@ export function renderContractHtml(
     }
 
     /* Empty paragraphs (user spacing) must take up a full line */
-    p:empty::before { content: "\\00a0"; }
-    p:empty { min-height: 1em; }
+    main p:empty::before,
+    #flow p:empty::before { content: "\\00a0"; }
+    main p:empty,
+    #flow p:empty { min-height: 1em; }
 
     /* Headings: editor uses margin: 1em 0 0.5em 0; line-height: 1.3 */
     h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em 0; line-height: 1.3; }
