@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState, useCallback } from 'react'
 import { EditorContent } from '@tiptap/react'
 import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/core'
@@ -19,6 +19,7 @@ interface EditorShellProps {
   onFooterChange?: (content: JSONContent) => void
   onHeaderEditor?: (editor: Editor | null) => void
   onFooterEditor?: (editor: Editor | null) => void
+  onHfHeightsChange?: (headerH: number, footerH: number) => void
 }
 
 export function EditorShell({
@@ -33,13 +34,27 @@ export function EditorShell({
   onFooterChange,
   onHeaderEditor,
   onFooterEditor,
+  onHfHeightsChange,
 }: EditorShellProps) {
+  const [headerH, setHeaderH] = useState(0)
+  const [footerH, setFooterH] = useState(0)
+
+  const handleHeightsChange = useCallback((hH: number, fH: number) => {
+    setHeaderH(hH)
+    setFooterH(fH)
+    onHfHeightsChange?.(hH, fH)
+  }, [onHfHeightsChange])
+
   const minHeight = useMemo(
     () => pageCount * PAGE_CONFIG.height + (pageCount - 1) * PAGE_CONFIG.gap,
     [pageCount]
   )
 
   const bodyPointerEvents = activeRegion === 'header' || activeRegion === 'footer' ? 'none' : 'auto'
+
+  // Body top padding = paddingTop + measured header height (or default headerHeight if no content)
+  const bodyPaddingTop = PAGE_CONFIG.paddingTop + (headerH || PAGE_CONFIG.headerHeight)
+  const bodyPaddingBottom = PAGE_CONFIG.paddingBottom + (footerH || PAGE_CONFIG.footerHeight)
 
   return (
     <div className="editor-v2-container">
@@ -56,9 +71,16 @@ export function EditorShell({
           onFooterChange={onFooterChange}
           onHeaderEditor={onHeaderEditor}
           onFooterEditor={onFooterEditor}
+          onHeightsChange={handleHeightsChange}
         />
         <div
-          style={{ position: 'relative', zIndex: 2, pointerEvents: bodyPointerEvents }}
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            pointerEvents: bodyPointerEvents,
+            ['--body-padding-top' as string]: `${bodyPaddingTop}px`,
+            ['--body-padding-bottom' as string]: `${bodyPaddingBottom}px`,
+          }}
           onClick={() => {
             if (activeRegion !== 'body') {
               onRegionChange('body')

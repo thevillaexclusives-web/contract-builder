@@ -36,11 +36,50 @@ const extensions = [
   PageBreak,
 ]
 
+// Header/footer use same extensions minus PageBreak
+const hfExtensions = extensions.filter((e) => e !== PageBreak)
+
+/** True when doc is empty or contains only a single empty paragraph. */
+function isDocEmpty(json: JSONContent | undefined): boolean {
+  if (!json) return true
+  const c = json.content
+  if (!c || c.length === 0) return true
+  if (c.length === 1 && c[0].type === 'paragraph' && (!c[0].content || c[0].content.length === 0)) return true
+  return false
+}
+
 export function renderContractHtml(
   tiptapJson: JSONContent,
-  contractName: string
+  contractName: string,
+  headerJson?: JSONContent,
+  footerJson?: JSONContent
 ): string {
   const bodyHtml = generateHTML(tiptapJson, extensions)
+
+  const hasHeader = !isDocEmpty(headerJson)
+  const hasFooter = !isDocEmpty(footerJson)
+
+  let headerHtml = ''
+  if (hasHeader && headerJson) {
+    try {
+      headerHtml = generateHTML(headerJson, hfExtensions)
+    } catch {
+      headerHtml = ''
+    }
+  }
+
+  let footerHtml = ''
+  if (hasFooter && footerJson) {
+    try {
+      footerHtml = generateHTML(footerJson, hfExtensions)
+    } catch {
+      footerHtml = ''
+    }
+  }
+
+  // Decide header/footer flex basis: auto-size if content, else collapse
+  const headerFlex = hasHeader ? 'flex: 0 0 auto;' : 'flex: 0 0 0; overflow: hidden;'
+  const footerFlex = hasFooter ? 'flex: 0 0 auto;' : 'flex: 0 0 0; overflow: hidden;'
 
   return `<!doctype html>
 <html lang="en">
@@ -97,13 +136,14 @@ export function renderContractHtml(
     }
 
     section.page > header {
-      flex: 0 0 25.4mm;
-      padding: 0 16.9mm;
+      ${headerFlex}
+      padding: 6.35mm 16.9mm 0 16.9mm;
+      font-size: 12px;
     }
 
     section.page > main {
       flex: 1;
-      padding: 6.35mm 16.9mm; /* top+bottom now match editor paddingTop/paddingBottom */
+      padding: 6.35mm 16.9mm;
       overflow: hidden;
     }
 
@@ -111,13 +151,20 @@ export function renderContractHtml(
     section.page > main > :last-child { margin-bottom: 0 !important; }
 
     section.page > footer {
-      flex: 0 0 19.0mm;
+      ${footerFlex}
       padding: 0 16.9mm 6.35mm 16.9mm;
+      font-size: 12px;
+    }
+
+    /* Fallback page number (shown when no custom footer) */
+    section.page > footer.page-number-only {
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 9pt;
       color: #666;
+      padding: 0 16.9mm 6.35mm 16.9mm;
     }
 
     /* Typography */
@@ -194,23 +241,40 @@ export function renderContractHtml(
   </style>
 </head>
 <body>
+  <!-- Header/footer templates for pagination script -->
+  <template id="hf-header">${headerHtml}</template>
+  <template id="hf-footer">${footerHtml}</template>
+
   <div id="flow" class="ProseMirror">${bodyHtml}</div>
   <script>
     (function paginate() {
       var flow = document.getElementById('flow');
       if (!flow) return;
 
-      // Collect all top-level elements from flow
+      var headerTpl = document.getElementById('hf-header');
+      var footerTpl = document.getElementById('hf-footer');
+      var hasHeader = ${hasHeader ? 'true' : 'false'};
+      var hasFooter = ${hasFooter ? 'true' : 'false'};
+
       var children = Array.from(flow.children);
 
-      // Helper: create a new page section
       function createPage() {
         var section = document.createElement('section');
         section.className = 'page';
 
         var header = document.createElement('header');
+        if (hasHeader && headerTpl) {
+          header.innerHTML = headerTpl.innerHTML;
+        }
+
         var main = document.createElement('main');
+
         var footer = document.createElement('footer');
+        if (hasFooter && footerTpl) {
+          footer.innerHTML = footerTpl.innerHTML;
+        } else {
+          footer.className = 'page-number-only';
+        }
 
         section.appendChild(header);
         section.appendChild(main);
@@ -219,7 +283,6 @@ export function renderContractHtml(
         return section;
       }
 
-      // Build pages
       var pages = [];
       var currentPage = createPage();
       document.body.appendChild(currentPage);
@@ -230,9 +293,7 @@ export function renderContractHtml(
       for (var i = 0; i < children.length; i++) {
         var el = children[i];
 
-        // Check for page-break node
         if (el.getAttribute('data-type') === 'page-break') {
-          // Force new page, do not render the page-break marker
           currentPage = createPage();
           document.body.appendChild(currentPage);
           pages.push(currentPage);
@@ -240,12 +301,10 @@ export function renderContractHtml(
           continue;
         }
 
-        // Append element to current main
         currentMain.appendChild(el);
 
         function overflows(main) {
           const r = main.getBoundingClientRect()
-          // subtract a tiny tolerance
           const bottom = r.bottom - 0.5
           const last = main.lastElementChild
           if (!last) return false
@@ -253,9 +312,7 @@ export function renderContractHtml(
           return lr.bottom > bottom
         }
 
-        // Check overflow (1px tolerance for sub-pixel rounding)
         if (overflows(currentMain)) {
-          // Remove from current, start new page
           currentMain.removeChild(el);
 
           currentPage = createPage();
@@ -267,17 +324,16 @@ export function renderContractHtml(
         }
       }
 
-      // Write page numbers
+      // Write page numbers into footers that don't have custom content
       var totalPages = pages.length;
       for (var p = 0; p < totalPages; p++) {
         var footer = pages[p].querySelector('footer');
-        footer.textContent = 'Page ' + (p + 1) + ' of ' + totalPages;
+        if (!hasFooter) {
+          footer.textContent = 'Page ' + (p + 1) + ' of ' + totalPages;
+        }
       }
 
-      // Mark body as paginated to swap visibility
       document.body.classList.add('paginated');
-
-      // Signal pagination complete
       window.__PAGINATION_DONE__ = true;
     })();
   </script>

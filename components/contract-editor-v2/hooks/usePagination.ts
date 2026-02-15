@@ -1,17 +1,13 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
-import { PAGE_CONFIG, contentUsableHeight } from '../config/pageConfig'
+import { PAGE_CONFIG } from '../config/pageConfig'
 import { paginationSpacersKey } from '../extensions/pagination-spacers'
 import type { PageBreakInfo } from '../extensions/pagination-spacers'
 
-const SPACER_HEIGHT =
-  PAGE_CONFIG.headerHeight +
-  PAGE_CONFIG.footerHeight +
-  PAGE_CONFIG.gap +
-  PAGE_CONFIG.paddingTop +
-  PAGE_CONFIG.paddingBottom // 96 + 72 + 24 + 24 + 24 = 240
-
-export function usePagination(editor: Editor | null): { pageCount: number } {
+export function usePagination(
+  editor: Editor | null,
+  hfHeights?: { headerH: number; footerH: number }
+): { pageCount: number } {
   const rafRef = useRef<number>(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevBreaksRef = useRef<string>('')
@@ -23,6 +19,16 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
     const view = editor.view
     const proseMirror = view.dom
     if (!proseMirror) return
+
+    // Dynamic header/footer heights (fall back to config defaults)
+    const hH = hfHeights?.headerH ?? PAGE_CONFIG.headerHeight
+    const fH = hfHeights?.footerH ?? PAGE_CONFIG.footerHeight
+
+    const usableHeight =
+      PAGE_CONFIG.height - hH - fH - PAGE_CONFIG.paddingTop - PAGE_CONFIG.paddingBottom
+
+    const spacerHeight =
+      hH + fH + PAGE_CONFIG.gap + PAGE_CONFIG.paddingTop + PAGE_CONFIG.paddingBottom
 
     // Collect top-level block elements, skipping spacers
     const allChildren = proseMirror.querySelectorAll(':scope > *')
@@ -46,16 +52,15 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
       const blockHeight = el.getBoundingClientRect().height
 
       if (isPageBreak) {
-        // Find ProseMirror position for this DOM element
         const pos = view.posAtDOM(el, 0)
-        breakInfos.push({ pos, spacerHeight: SPACER_HEIGHT })
+        breakInfos.push({ pos, spacerHeight })
         currentPageHeight = 0
         continue
       }
 
-      if (currentPageHeight + blockHeight > contentUsableHeight && currentPageHeight > 0) {
+      if (currentPageHeight + blockHeight > usableHeight && currentPageHeight > 0) {
         const pos = view.posAtDOM(el, 0)
-        breakInfos.push({ pos, spacerHeight: SPACER_HEIGHT })
+        breakInfos.push({ pos, spacerHeight })
         currentPageHeight = blockHeight
       } else {
         currentPageHeight += blockHeight
@@ -69,7 +74,7 @@ export function usePagination(editor: Editor | null): { pageCount: number } {
     setPageCount(breakInfos.length + 1)
 
     view.dispatch(view.state.tr.setMeta(paginationSpacersKey, breakInfos))
-  }, [editor])
+  }, [editor, hfHeights])
 
   const debouncedMeasure = useCallback(() => {
     if (timeoutRef.current) {

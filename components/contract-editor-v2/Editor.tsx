@@ -132,11 +132,19 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       },
     })
 
-    const { pageCount } = usePagination(editor)
+    const [hfHeights, setHfHeights] = useState<{ headerH: number; footerH: number }>({
+      headerH: 0,
+      footerH: 0,
+    })
+    const { pageCount } = usePagination(editor, hfHeights)
     const prevModeRef = useRef(mode)
     const [activeRegion, setActiveRegion] = useState<ActiveRegion>('body')
     const headerEditorRef = useRef<TiptapEditor | null>(null)
     const footerEditorRef = useRef<TiptapEditor | null>(null)
+
+    const handleHfHeightsChange = useCallback((headerH: number, footerH: number) => {
+      setHfHeights({ headerH, footerH })
+    }, [])
 
     const handleRegionChange = useCallback((region: ActiveRegion) => {
       setActiveRegion(region)
@@ -289,6 +297,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           onFooterChange={onFooterChange}
           onHeaderEditor={handleHeaderEditor}
           onFooterEditor={handleFooterEditor}
+          onHfHeightsChange={handleHfHeightsChange}
         />
       </div>
     )

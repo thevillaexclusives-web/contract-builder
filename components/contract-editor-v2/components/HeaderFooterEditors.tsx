@@ -35,6 +35,15 @@ const hfExtensions = [
 
 const emptyDoc: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 
+/** True when doc is empty or contains only a single empty paragraph. */
+function isDocEmpty(json: JSONContent | undefined): boolean {
+  if (!json) return true
+  const c = json.content
+  if (!c || c.length === 0) return true
+  if (c.length === 1 && c[0].type === 'paragraph' && (!c[0].content || c[0].content.length === 0)) return true
+  return false
+}
+
 interface HeaderFooterEditorsProps {
   pageCount: number
   activeRegion: ActiveRegion
@@ -46,6 +55,7 @@ interface HeaderFooterEditorsProps {
   onFooterChange?: (content: JSONContent) => void
   onHeaderEditor?: (editor: Editor | null) => void
   onFooterEditor?: (editor: Editor | null) => void
+  onHeightsChange?: (headerH: number, footerH: number) => void
 }
 
 export function HeaderFooterEditors({
@@ -59,12 +69,18 @@ export function HeaderFooterEditors({
   onFooterChange,
   onHeaderEditor,
   onFooterEditor,
+  onHeightsChange,
 }: HeaderFooterEditorsProps) {
   const isEditable = mode === 'template'
 
   // Live HTML snapshots updated via editor.on('update')
   const [headerHtml, setHeaderHtml] = useState('')
   const [footerHtml, setFooterHtml] = useState('')
+
+  // Measured heights
+  const headerRegionRef = useRef<HTMLDivElement>(null)
+  const footerRegionRef = useRef<HTMLDivElement>(null)
+  const prevHeightsRef = useRef('0|0')
 
   const headerEditor = useEditor({
     extensions: hfExtensions,
@@ -125,23 +141,44 @@ export function HeaderFooterEditors({
     }
   }, [footerContent, footerEditor])
 
-  // Subscribe to editor updates to keep preview HTML in sync live.
-  // Listeners are added once when editor instances are created and cleaned up on unmount.
+  // Measure header/footer heights and report to parent.
+  const measureHeights = useCallback(() => {
+    const hEmpty = isDocEmpty(headerEditor?.getJSON())
+    const fEmpty = isDocEmpty(footerEditor?.getJSON())
+
+    const hH = hEmpty ? 0 : (headerRegionRef.current?.scrollHeight ?? 0)
+    const fH = fEmpty ? 0 : (footerRegionRef.current?.scrollHeight ?? 0)
+
+    const key = `${hH}|${fH}`
+    if (key !== prevHeightsRef.current) {
+      prevHeightsRef.current = key
+      onHeightsChange?.(hH, fH)
+    }
+  }, [headerEditor, footerEditor, onHeightsChange])
+
+  // Subscribe to editor updates: keep preview HTML in sync + re-measure heights.
   useEffect(() => {
     if (!headerEditor) return
-    const updateHtml = () => setHeaderHtml(headerEditor.getHTML())
-    updateHtml() // initial
-    headerEditor.on('update', updateHtml)
-    return () => { headerEditor.off('update', updateHtml) }
-  }, [headerEditor])
+    const onUpdate = () => {
+      setHeaderHtml(headerEditor.getHTML())
+      // Defer measure to next frame so DOM has updated
+      requestAnimationFrame(measureHeights)
+    }
+    onUpdate() // initial
+    headerEditor.on('update', onUpdate)
+    return () => { headerEditor.off('update', onUpdate) }
+  }, [headerEditor, measureHeights])
 
   useEffect(() => {
     if (!footerEditor) return
-    const updateHtml = () => setFooterHtml(footerEditor.getHTML())
-    updateHtml() // initial
-    footerEditor.on('update', updateHtml)
-    return () => { footerEditor.off('update', updateHtml) }
-  }, [footerEditor])
+    const onUpdate = () => {
+      setFooterHtml(footerEditor.getHTML())
+      requestAnimationFrame(measureHeights)
+    }
+    onUpdate() // initial
+    footerEditor.on('update', onUpdate)
+    return () => { footerEditor.off('update', onUpdate) }
+  }, [footerEditor, measureHeights])
 
   const handleHeaderDblClick = useCallback(() => {
     if (isEditable) {
@@ -157,24 +194,20 @@ export function HeaderFooterEditors({
     }
   }, [isEditable, onRegionChange, footerEditor])
 
-  // Outside-click: mousedown on the hf-layer background (not on an active region's editor)
-  // exits header/footer editing.
+  // Outside-click handler
   const layerRef = useRef<HTMLDivElement>(null)
   const handleLayerMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      // Only act when a header/footer region is active
       if (activeRegion !== 'header' && activeRegion !== 'footer') return
-
       const target = e.target as HTMLElement
-
-      // If the click landed inside the active region's editor, let it through
       if (target.closest('.editor-v2-hf-region.active')) return
-
-      // Click was on page background, inactive region, or another page's preview → exit
       onRegionChange('body')
     },
     [activeRegion, onRegionChange]
   )
+
+  const headerEmpty = isDocEmpty(headerEditor?.getJSON())
+  const footerEmpty = isDocEmpty(footerEditor?.getJSON())
 
   const pages = Array.from({ length: pageCount }, (_, i) => i)
 
@@ -188,28 +221,32 @@ export function HeaderFooterEditors({
       {pages.map((i) => {
         const pageTop = i * (PAGE_CONFIG.height + PAGE_CONFIG.gap)
         const headerTop = pageTop + PAGE_CONFIG.paddingTop
-        const footerTop = pageTop + PAGE_CONFIG.height - PAGE_CONFIG.paddingBottom - PAGE_CONFIG.footerHeight
+        const footerTop = pageTop + PAGE_CONFIG.height - PAGE_CONFIG.paddingBottom - ((footerRegionRef.current?.scrollHeight ?? 0) || PAGE_CONFIG.footerHeight)
+
+        // Show region if it has content OR if it's actively being edited
+        const showHeader = !headerEmpty || activeRegion === 'header'
+        const showFooter = !footerEmpty || activeRegion === 'footer'
 
         return (
           <React.Fragment key={i}>
             {/* Header region */}
             <div
-              className={`editor-v2-hf-region${activeRegion === 'header' ? ' active' : ''}`}
+              ref={i === 0 ? headerRegionRef : undefined}
+              className={`editor-v2-hf-region${activeRegion === 'header' ? ' active' : ''}${!showHeader ? ' empty' : ''}`}
               style={{
                 position: 'absolute',
                 top: headerTop,
                 left: PAGE_CONFIG.paddingX,
                 right: PAGE_CONFIG.paddingX,
-                height: PAGE_CONFIG.headerHeight,
                 pointerEvents: activeRegion === 'header' || (isEditable && activeRegion === 'body') ? 'auto' : 'none',
               }}
               onDoubleClick={handleHeaderDblClick}
             >
               {i === 0 ? (
                 <EditorContent editor={headerEditor} />
-              ) : (
+              ) : showHeader ? (
                 <div className="hf-preview ProseMirror" dangerouslySetInnerHTML={{ __html: headerHtml }} />
-              )}
+              ) : null}
               {isEditable && activeRegion !== 'header' && (
                 <div className="hf-hint">Double-click to edit header</div>
               )}
@@ -217,22 +254,22 @@ export function HeaderFooterEditors({
 
             {/* Footer region */}
             <div
-              className={`editor-v2-hf-region${activeRegion === 'footer' ? ' active' : ''}`}
+              ref={i === 0 ? footerRegionRef : undefined}
+              className={`editor-v2-hf-region${activeRegion === 'footer' ? ' active' : ''}${!showFooter ? ' empty' : ''}`}
               style={{
                 position: 'absolute',
                 top: footerTop,
                 left: PAGE_CONFIG.paddingX,
                 right: PAGE_CONFIG.paddingX,
-                height: PAGE_CONFIG.footerHeight,
                 pointerEvents: activeRegion === 'footer' || (isEditable && activeRegion === 'body') ? 'auto' : 'none',
               }}
               onDoubleClick={handleFooterDblClick}
             >
               {i === 0 ? (
                 <EditorContent editor={footerEditor} />
-              ) : (
+              ) : showFooter ? (
                 <div className="hf-preview ProseMirror" dangerouslySetInnerHTML={{ __html: footerHtml }} />
-              )}
+              ) : null}
               {isEditable && activeRegion !== 'footer' && (
                 <div className="hf-hint">Double-click to edit footer</div>
               )}

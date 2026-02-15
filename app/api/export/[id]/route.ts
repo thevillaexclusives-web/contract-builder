@@ -63,8 +63,8 @@ export async function POST(
 
     const envelope = parseContent(rawContent)
 
-    // Render TipTap JSON to full HTML document
-    const html = renderContractHtml(envelope.body, contractName)
+    // Render TipTap JSON to full HTML document (with header/footer if present)
+    const html = renderContractHtml(envelope.body, contractName, envelope.header, envelope.footer)
 
     console.log('🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶');
     console.log('html:', html);

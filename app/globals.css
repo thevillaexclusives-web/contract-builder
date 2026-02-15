@@ -436,7 +436,7 @@
 /* V2 ProseMirror */
 .editor-v2-shell .ProseMirror {
   width: 794px;
-  padding: 120px 64px 24px 64px;
+  padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 96px) 64px;
   background: transparent;
   outline: none;
   position: relative;
@@ -475,8 +475,11 @@
 }
 
 .editor-v2-hf-region {
-  overflow: hidden;
   box-sizing: border-box;
+}
+
+.editor-v2-hf-region.empty {
+  min-height: 20px; /* clickable area for dblclick even when empty */
 }
 
 .editor-v2-hf-region:hover {
