@@ -164,6 +164,11 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       clear: () => {
         editor?.commands.clearContent()
       },
+      getAllContent: () => ({
+        body: editor?.getJSON() || { type: 'doc', content: [] },
+        header: { type: 'doc', content: [] },
+        footer: { type: 'doc', content: [] },
+      }),
     }))
 
     if (!editor) {
