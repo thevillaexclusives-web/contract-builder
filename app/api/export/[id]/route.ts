@@ -90,6 +90,8 @@ export async function POST(
       const page = await browser.newPage()
       await page.setViewport({ width: 1200, height: 800 })
       await page.setContent(html, { waitUntil: 'networkidle2' })
+      // Wait for async pagination script to finish (fonts + double-RAF + paginate)
+      await page.waitForFunction('window.__PAGINATION_DONE__ === true', { timeout: 10000 })
       await page.emulateMediaType('print')
 
       const pdf = await page.pdf({

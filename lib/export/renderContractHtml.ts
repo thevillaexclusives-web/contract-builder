@@ -316,9 +316,17 @@ export function renderContractHtml(
 
   <div id="flow" class="ProseMirror">${bodyHtml}</div>
   <script>
-    (function paginate() {
+    (async function paginate() {
       var flow = document.getElementById('flow');
       if (!flow) return;
+
+      // Wait for web fonts so text wrapping/heights are final
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+
+      // Double-RAF: let layout fully settle after fonts load
+      await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
 
       var headerTpl = document.getElementById('hf-header');
       var footerTpl = document.getElementById('hf-footer');
