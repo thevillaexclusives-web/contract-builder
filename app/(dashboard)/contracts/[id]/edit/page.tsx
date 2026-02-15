@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor-v2/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
+import { parseContent, serializeContent } from '@/lib/content-shape'
 import { Save, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown } from 'lucide-react'
 import Link from 'next/link'
 
@@ -19,6 +20,8 @@ export default function ContractEditPage() {
   const [contractName, setContractName] = useState('')
   const [contractDescription, setContractDescription] = useState('')
   const [content, setContent] = useState<JSONContent | undefined>(undefined)
+  const [headerContent, setHeaderContent] = useState<JSONContent | undefined>(undefined)
+  const [footerContent, setFooterContent] = useState<JSONContent | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -48,15 +51,14 @@ export default function ContractEditPage() {
       setContractName(loadedContract.name)
       setContractDescription(loadedContract.description || '')
       
-      // Parse content from JSONB
-      const contractContent = loadedContract.content as JSONContent
-      setContent(contractContent || {
-        type: 'doc',
-        content: [{ type: 'paragraph' }],
-      })
-      
+      // Parse content envelope (backward compatible)
+      const envelope = parseContent(loadedContract.content)
+      setContent(envelope.body)
+      setHeaderContent(envelope.header)
+      setFooterContent(envelope.footer)
+
       // Store initial content for comparison
-      lastSavedContentRef.current = JSON.stringify(contractContent)
+      lastSavedContentRef.current = JSON.stringify(envelope)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contract')
     } finally {
@@ -86,7 +88,7 @@ export default function ContractEditPage() {
         body: JSON.stringify({
           name: contractName,
           description: contractDescription || null,
-          content: content,
+          content: serializeContent(content, headerContent, footerContent),
         }),
       })
 
@@ -96,7 +98,7 @@ export default function ContractEditPage() {
 
       const result = await response.json()
       setContract(result.data)
-      lastSavedContentRef.current = JSON.stringify(content)
+      lastSavedContentRef.current = JSON.stringify(serializeContent(content, headerContent, footerContent))
       
       if (showStatus) {
         setSaveStatus('saved')
@@ -109,7 +111,7 @@ export default function ContractEditPage() {
       }
       console.error('Error saving contract:', err)
     }
-  }, [contract, contractId, contractName, contractDescription, content])
+  }, [contract, contractId, contractName, contractDescription, content, headerContent, footerContent])
 
   // Auto-save on content change (debounced)
   useEffect(() => {
@@ -121,7 +123,7 @@ export default function ContractEditPage() {
     }
 
     // Check if content actually changed
-    const currentContent = JSON.stringify(content)
+    const currentContent = JSON.stringify(serializeContent(content, headerContent, footerContent))
     if (currentContent === lastSavedContentRef.current) {
       return
     }
@@ -136,7 +138,7 @@ export default function ContractEditPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [content, contract, loading, saveContract])
+  }, [content, headerContent, footerContent, contract, loading, saveContract])
 
   // Auto-save on name/description change (debounced)
   useEffect(() => {
@@ -349,6 +351,10 @@ export default function ContractEditPage() {
           onChange={handleContentChange}
           editable={!isFinalized}
           showToolbar={!isFinalized}
+          headerContent={headerContent}
+          footerContent={footerContent}
+          onHeaderChange={setHeaderContent}
+          onFooterChange={setFooterContent}
         />
       </div>
     </div>

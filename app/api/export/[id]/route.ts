@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { renderContractHtml } from '@/lib/export/renderContractHtml'
+import { parseContent } from '@/lib/content-shape'
 
 export const runtime = 'nodejs'
 
@@ -49,19 +50,21 @@ export async function POST(
       return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
     }
 
-    // Get contract content (TipTap JSON)
-    const content = (contract as any).content
+    // Get contract content (envelope or legacy doc)
+    const rawContent = (contract as any).content
     const contractName = (contract as any).name as string
 
-    if (!content) {
+    if (!rawContent) {
       return NextResponse.json(
         { error: 'Contract content is empty' },
         { status: 400 }
       )
     }
 
+    const envelope = parseContent(rawContent)
+
     // Render TipTap JSON to full HTML document
-    const html = renderContractHtml(content, contractName)
+    const html = renderContractHtml(envelope.body, contractName)
 
     console.log('🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶');
     console.log('html:', html);

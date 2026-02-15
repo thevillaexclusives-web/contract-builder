@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor-v2/Editor'
 import type { JSONContent } from '@tiptap/core'
+import { serializeContent } from '@/lib/content-shape'
 
 export default function NewTemplatePage() {
   const router = useRouter()
@@ -15,6 +16,8 @@ export default function NewTemplatePage() {
       },
     ],
   })
+  const [headerContent, setHeaderContent] = useState<JSONContent | undefined>(undefined)
+  const [footerContent, setFooterContent] = useState<JSONContent | undefined>(undefined)
   const [templateName, setTemplateName] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -38,10 +41,7 @@ export default function NewTemplatePage() {
         body: JSON.stringify({
           name: templateName.trim(),
           description: null,
-          content: content || {
-            type: 'doc',
-            content: [{ type: 'paragraph' }],
-          },
+          content: serializeContent(content, headerContent, footerContent),
         }),
       })
 
@@ -88,6 +88,10 @@ export default function NewTemplatePage() {
           onChange={handleContentChange}
           editable={true}
           showToolbar={true}
+          headerContent={headerContent}
+          footerContent={footerContent}
+          onHeaderChange={setHeaderContent}
+          onFooterChange={setFooterContent}
         />
 
         <div className="flex justify-end gap-4">

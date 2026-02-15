@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor-v2/Editor'
 import type { JSONContent } from '@tiptap/core'
 import type { ContractTemplate } from '@/types/contract'
+import { parseContent, serializeContent } from '@/lib/content-shape'
 import { Save, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -19,6 +20,8 @@ export default function TemplateEditPage() {
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
   const [content, setContent] = useState<JSONContent | undefined>(undefined)
+  const [headerContent, setHeaderContent] = useState<JSONContent | undefined>(undefined)
+  const [footerContent, setFooterContent] = useState<JSONContent | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -47,15 +50,14 @@ export default function TemplateEditPage() {
       setTemplateName(loadedTemplate.name)
       setTemplateDescription(loadedTemplate.description || '')
       
-      // Parse content from JSONB
-      const templateContent = loadedTemplate.content as JSONContent
-      setContent(templateContent || {
-        type: 'doc',
-        content: [{ type: 'paragraph' }],
-      })
-      
+      // Parse content envelope (backward compatible)
+      const envelope = parseContent(loadedTemplate.content)
+      setContent(envelope.body)
+      setHeaderContent(envelope.header)
+      setFooterContent(envelope.footer)
+
       // Store initial content for comparison
-      lastSavedContentRef.current = JSON.stringify(templateContent)
+      lastSavedContentRef.current = JSON.stringify(envelope)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load template')
     } finally {
@@ -85,7 +87,7 @@ export default function TemplateEditPage() {
         body: JSON.stringify({
           name: templateName,
           description: templateDescription || null,
-          content: content,
+          content: serializeContent(content, headerContent, footerContent),
         }),
       })
 
@@ -95,7 +97,7 @@ export default function TemplateEditPage() {
 
       const result = await response.json()
       setTemplate(result.data)
-      lastSavedContentRef.current = JSON.stringify(content)
+      lastSavedContentRef.current = JSON.stringify(serializeContent(content, headerContent, footerContent))
       
       if (showStatus) {
         setSaveStatus('saved')
@@ -108,7 +110,7 @@ export default function TemplateEditPage() {
       }
       console.error('Error saving template:', err)
     }
-  }, [template, templateId, templateName, templateDescription, content])
+  }, [template, templateId, templateName, templateDescription, content, headerContent, footerContent])
 
   // Auto-save on content change (debounced)
   useEffect(() => {
@@ -120,7 +122,7 @@ export default function TemplateEditPage() {
     }
 
     // Check if content actually changed
-    const currentContent = JSON.stringify(content)
+    const currentContent = JSON.stringify(serializeContent(content, headerContent, footerContent))
     if (currentContent === lastSavedContentRef.current) {
       return
     }
@@ -135,7 +137,7 @@ export default function TemplateEditPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [content, template, loading, saveTemplate])
+  }, [content, headerContent, footerContent, template, loading, saveTemplate])
 
   // Auto-save on name/description change (debounced)
   useEffect(() => {
@@ -283,6 +285,10 @@ export default function TemplateEditPage() {
           onChange={handleContentChange}
           editable={true}
           showToolbar={true}
+          headerContent={headerContent}
+          footerContent={footerContent}
+          onHeaderChange={setHeaderContent}
+          onFooterChange={setFooterContent}
         />
       </div>
     </div>
