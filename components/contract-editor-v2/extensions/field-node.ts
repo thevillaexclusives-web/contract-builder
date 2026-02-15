@@ -91,7 +91,7 @@ export const FieldNode = Node.create({
     // Get mode from editor storage
     const mode = 'template' // Default for renderHTML, actual mode handled in addNodeView
     
-    const displayText = label || (value ? value : '________')
+    const displayText = label || (value ? value : '____________________________')
     
     return [
       'span',
@@ -100,7 +100,7 @@ export const FieldNode = Node.create({
         'data-field-label': label,
         'data-field-value': value,
         class: 'field-node',
-        style: 'border-bottom: 2px dashed #ccc; min-width: 80px; display: inline-block; padding: 0 4px;',
+        style: 'border-bottom: 1px solid #333; min-width: 300px; display: inline-block; padding: 0 4px;',
       }),
       displayText,
     ]
@@ -133,7 +133,7 @@ export const FieldNode = Node.create({
         // Template mode: Show as placeholder
         const placeholder = label || '________'
         dom.textContent = placeholder
-        dom.style.borderBottom = '2px dashed #ccc'
+        dom.style.borderBottom = '1px solid #333'
         dom.style.color = '#666'
         dom.style.cursor = 'pointer'
         dom.style.userSelect = 'none'
