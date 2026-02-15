@@ -20,6 +20,7 @@ import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
 import { PaginationSpacers } from './extensions/pagination-spacers'
 import { EditorShell } from './components/EditorShell'
+import TableBubbleMenu from './components/TableBubbleMenu'
 import { usePagination } from './hooks/usePagination'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
@@ -234,6 +235,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
             </div>
           </div>
         )}
+        <TableBubbleMenu editor={editor} />
         <EditorShell
           editor={editor}
           pageCount={pageCount}

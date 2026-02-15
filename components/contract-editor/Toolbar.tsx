@@ -1,7 +1,7 @@
 'use client'
 
 import { Editor } from '@tiptap/core'
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import {
   Bold,
   Italic,
@@ -16,10 +16,6 @@ import {
   Redo,
   Table,
   FileText,
-  Rows3,
-  Columns3,
-  Trash2,
-  ChevronDown,
 } from 'lucide-react'
 import ListStyleDropdown from './ListStyleDropdown'
 import TextAlignDropdown from './TextAlignDropdown'
@@ -118,33 +114,6 @@ export default function Toolbar({ editor }: ToolbarProps) {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   }, [editor])
 
-  const handleAddRowBefore = useCallback(() => {
-    editor?.chain().focus().addRowBefore().run()
-  }, [editor])
-
-  const handleAddRowAfter = useCallback(() => {
-    editor?.chain().focus().addRowAfter().run()
-  }, [editor])
-
-  const handleDeleteRow = useCallback(() => {
-    editor?.chain().focus().deleteRow().run()
-  }, [editor])
-
-  const handleAddColumnBefore = useCallback(() => {
-    editor?.chain().focus().addColumnBefore().run()
-  }, [editor])
-
-  const handleAddColumnAfter = useCallback(() => {
-    editor?.chain().focus().addColumnAfter().run()
-  }, [editor])
-
-  const handleDeleteColumn = useCallback(() => {
-    editor?.chain().focus().deleteColumn().run()
-  }, [editor])
-
-  const handleDeleteTable = useCallback(() => {
-    editor?.chain().focus().deleteTable().run()
-  }, [editor])
 
   const handlePageBreak = useCallback(() => {
     editor?.chain().focus().setPageBreak().run()
@@ -235,32 +204,6 @@ export default function Toolbar({ editor }: ToolbarProps) {
       <ToolbarButton onClick={handleInsertTable} title="Insert Table">
         <Table className="w-4 h-4" />
       </ToolbarButton>
-
-      {editor.isActive('table') && (
-        <>
-          <ToolbarButton onClick={handleAddRowBefore} title="Add Row Above">
-            <Rows3 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleAddRowAfter} title="Add Row Below">
-            <Rows3 className="w-4 h-4 rotate-180" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleDeleteRow} title="Delete Row">
-            <Rows3 className="w-4 h-4 text-red-500" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleAddColumnBefore} title="Add Column Left">
-            <Columns3 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleAddColumnAfter} title="Add Column Right">
-            <Columns3 className="w-4 h-4 rotate-180" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleDeleteColumn} title="Delete Column">
-            <Columns3 className="w-4 h-4 text-red-500" />
-          </ToolbarButton>
-          <ToolbarButton onClick={handleDeleteTable} title="Delete Table">
-            <Trash2 className="w-4 h-4 text-red-500" />
-          </ToolbarButton>
-        </>
-      )}
 
       {/* Field Insert */}
       <FieldInsertDropdown editor={editor} />
