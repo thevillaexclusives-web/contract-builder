@@ -169,13 +169,19 @@
   font-family: inherit;
 }
 
-/* Field nodes inside tables: no underline */
-.ProseMirror td .field-node,
-.ProseMirror th .field-node {
+/* Field nodes inside tables: no underline + fit cell width */
+.ProseMirror table td .field-node,
+.ProseMirror table th .field-node {
+  display: block;
+  max-width: 100%;
   border-bottom: none !important;
 }
-.ProseMirror td .field-node .field-input,
-.ProseMirror th .field-node .field-input {
+.ProseMirror table td .field-input,
+.ProseMirror table th .field-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border-bottom: none !important;
 }
 

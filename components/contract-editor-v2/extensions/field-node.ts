@@ -127,6 +127,7 @@ export const FieldNode = Node.create({
       })
 
       let input: HTMLInputElement | null = null
+      let updateInputWidth: ((textLength?: number) => void) | null = null
 
       // Render based on mode
       if (mode === 'template') {
@@ -164,42 +165,57 @@ export const FieldNode = Node.create({
         input.value = value || ''
         input.placeholder = label || 'Enter value'
         input.className = 'field-input'
-        
-        // Fixed width to prevent layout shifts
-        const inputWidth = Math.max(120, (value?.length || label?.length || 10) * 8)
+
         input.style.cssText = `
           border: none;
           border-bottom: 1px solid #333;
           outline: none;
           background: transparent;
-          width: ${inputWidth}px;
-          min-width: 120px;
-          max-width: 300px;
           padding: 2px 4px;
           font-size: inherit;
           font-family: inherit;
           color: inherit;
+          box-sizing: border-box;
         `
-        
+
+        // Size input to fit table cells or use dynamic px width
+        updateInputWidth = (textLength?: number) => {
+          const inTable = dom.closest('td,th') != null
+          if (inTable) {
+            input!.style.width = '100%'
+            input!.style.maxWidth = '100%'
+            input!.style.minWidth = '0'
+            input!.style.display = 'block'
+            dom.style.display = 'block'
+            dom.style.maxWidth = '100%'
+            return
+          }
+          const len = textLength ?? (input!.value?.length || label?.length || 10)
+          const w = Math.max(120, Math.min(300, len * 8))
+          input!.style.width = `${w}px`
+          input!.style.minWidth = '120px'
+          input!.style.maxWidth = '300px'
+        }
+
+        updateInputWidth()
+
         // Prevent ProseMirror from handling events on the input
         input.addEventListener('mousedown', (e) => {
           e.stopPropagation()
         })
-        
+
         input.addEventListener('click', (e) => {
           e.stopPropagation()
           input?.focus()
         })
-        
+
         // Update node when input changes
         input.addEventListener('input', (e) => {
           e.stopPropagation()
           const newValue = (e.target as HTMLInputElement).value
-          
-          // Adjust width based on content
-          const newWidth = Math.max(120, Math.min(300, newValue.length * 8))
-          input!.style.width = `${newWidth}px`
-          
+
+          updateInputWidth!(newValue.length)
+
           if (editor && typeof getPos === 'function') {
             const pos = getPos()
             if (typeof pos === 'number') {
@@ -213,19 +229,19 @@ export const FieldNode = Node.create({
             }
           }
         })
-        
+
         // Handle focus/blur for better UX
         input.addEventListener('focus', (e) => {
           e.stopPropagation()
           input!.style.borderBottom = '2px solid #0066cc'
           input!.style.borderBottomWidth = '2px'
         })
-        
+
         input.addEventListener('blur', () => {
           input!.style.borderBottom = '1px solid #333'
           input!.style.borderBottomWidth = '1px'
         })
-        
+
         // Prevent keyboard events from propagating to ProseMirror
         input.addEventListener('keydown', (e) => {
           e.stopPropagation()
@@ -234,7 +250,7 @@ export const FieldNode = Node.create({
             input?.blur()
           }
         })
-        
+
         dom.appendChild(input)
       } else {
         // Readonly mode: Show as resolved text
@@ -252,8 +268,9 @@ export const FieldNode = Node.create({
           // Update input value when node changes externally
           if (mode === 'contract' && input && updatedNode.attrs.value !== input.value) {
             input.value = updatedNode.attrs.value || ''
-            const inputWidth = Math.max(120, Math.min(300, (updatedNode.attrs.value?.length || 10) * 8))
-            input.style.width = `${inputWidth}px`
+            if (updateInputWidth) {
+              updateInputWidth(updatedNode.attrs.value?.length || 10)
+            }
           }
           return true
         },

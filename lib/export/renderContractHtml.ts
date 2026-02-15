@@ -319,9 +319,11 @@ export function renderContractHtml(
       font-size: inherit;
     }
 
-    /* Field nodes inside tables: no underline */
+    /* Field nodes inside tables: no underline + fit cell width */
     td .field-node,
     th .field-node {
+      display: block;
+      max-width: 100%;
       border-bottom: none !important;
     }
   </style>
