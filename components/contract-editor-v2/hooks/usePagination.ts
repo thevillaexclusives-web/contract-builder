@@ -3,6 +3,47 @@ import type { Editor } from '@tiptap/core'
 import { PAGE_CONFIG } from '../config/pageConfig'
 import { paginationSpacersKey } from '../extensions/pagination-spacers'
 import type { PageBreakInfo } from '../extensions/pagination-spacers'
+import type { EditorState } from 'prosemirror-state'
+
+function snapToWordBoundary(state: EditorState, pos: number): number {
+  const { doc } = state
+  const docSize = doc.content.size
+  const clamped = Math.max(0, Math.min(pos, docSize))
+
+  const windowSize = 30
+  const from = Math.max(0, clamped - windowSize)
+  const to = Math.min(docSize, clamped + windowSize)
+
+  const text = doc.textBetween(from, to, '', '')
+  const center = clamped - from
+  const isWS = (ch: string) => /\s/u.test(ch)
+
+  const before = center - 1
+  const at = center
+  if (
+    (before >= 0 && before < text.length && isWS(text[before])) ||
+    (at >= 0 && at < text.length && isWS(text[at]))
+  ) {
+    return clamped
+  }
+
+  for (let d = 1; d <= windowSize; d++) {
+    const leftIdx = center - d
+    const rightIdx = center + d
+
+    if (leftIdx > 0 && leftIdx <= text.length) {
+      const chBefore = text[leftIdx - 1]
+      if (chBefore && isWS(chBefore)) return from + leftIdx
+    }
+
+    if (rightIdx >= 0 && rightIdx < text.length) {
+      const chAt = text[rightIdx]
+      if (chAt && isWS(chAt)) return from + rightIdx
+    }
+  }
+
+  return clamped
+}
 
 /**
  * Google-Docs–style pagination hook.
@@ -126,7 +167,8 @@ export function usePagination(
         const hit = view.posAtCoords({ left: rect.left + 5, top: rect.top + remaining - 1 })
 
         if (hit) {
-          const splitPos = hit.pos
+          const raw = hit.pos
+          const splitPos = snapToWordBoundary(view.state, raw)
           const $pos = view.state.doc.resolve(splitPos)
 
           // Ensure the position is inside a paragraph and not at its edges
