@@ -49,11 +49,14 @@ function snapToWordBoundary(state: EditorState, pos: number): number {
 /**
  * Google-Docs–style pagination hook.
  *
- * Phase 1 — Break between blocks & list items:
- *   • Flattens <ol>/<ul> to their <li> children for finer break granularity.
+ * Phase 1 — Break between top-level blocks & list items:
  *   • Uses `posAtDOM(el, 0) - 1` so spacers sit *between* nodes, not inside.
  *   • Pushes a block to the next page when it doesn't fit the remaining space
  *     but would fit on a fresh page.
+ *   • For lists (<ol>/<ul>): measures each <li> individually. When an item
+ *     overflows the page, splits the list node via `tr.split()` so the two
+ *     halves become separate top-level blocks. Spacers are NEVER placed
+ *     inside list DOM (that would create invalid HTML: <div> inside <ol>).
  *
  * Phase 2 — Split long paragraphs at page boundaries:
  *   • When a <p> overflows the remaining page space, uses `posAtCoords` to
@@ -95,24 +98,17 @@ export function usePagination(
     const spacerHeight =
       hH + fH + PAGE_CONFIG.gap + PAGE_CONFIG.paddingTop + PAGE_CONFIG.paddingBottom
 
-    // ── Phase 1: Collect breakable elements ─────────────────────────────
-    // Flatten <ol>/<ul> into their <li> children so page breaks can fall
-    // between individual list items rather than treating the whole list as
-    // a single indivisible block.
+    // ── Collect top-level block elements ─────────────────────────────────
+    // Lists (<ol>/<ul>) are kept as single top-level blocks — we NEVER
+    // insert spacer decorations inside list DOM (that creates invalid HTML:
+    // <div> inside <ol>). Instead, we measure per-<li> heights below and
+    // split the ProseMirror list node when an item crosses a page boundary.
     const allChildren = proseMirror.querySelectorAll(':scope > *')
     const blocks: HTMLElement[] = []
     allChildren.forEach((el) => {
       const htmlEl = el as HTMLElement
       if (htmlEl.classList.contains('pagination-spacer')) return
-
-      const tag = htmlEl.tagName.toLowerCase()
-      if (tag === 'ol' || tag === 'ul') {
-        // Push each <li> individually for finer break granularity
-        const items = htmlEl.querySelectorAll(':scope > li')
-        items.forEach((li) => blocks.push(li as HTMLElement))
-      } else {
-        blocks.push(htmlEl)
-      }
+      blocks.push(htmlEl)
     })
 
     if (blocks.length === 0) {
@@ -155,13 +151,90 @@ export function usePagination(
         continue
       }
 
+      // ── List handling: per-item measurement with list splitting ────────
+      // Lists stay as top-level blocks. We measure each <li> individually
+      // to find where the page boundary falls, then split the ProseMirror
+      // list node at that boundary via tr.split(). After the split the two
+      // halves become separate top-level blocks and Phase 1 inserts a
+      // spacer between them on the next measure pass.
+      const tag = el.tagName.toLowerCase()
+      if (tag === 'ol' || tag === 'ul') {
+        const liElements = el.querySelectorAll(':scope > li')
+
+        let brokeFallback = false
+        for (let i = 0; i < liElements.length; i++) {
+          const liEl = liElements[i] as HTMLElement
+          const liHeight = liEl.getBoundingClientRect().height
+
+          // Li fits on current page — accumulate and continue
+          if (currentPageHeight + liHeight <= usableHeight) {
+            currentPageHeight += liHeight
+            continue
+          }
+
+          // This <li> overflows — try to split the list before it
+          if (currentPageHeight > 0) {
+            try {
+              const liPosInside = view.posAtDOM(liEl, 0)
+              const $li = view.state.doc.resolve(liPosInside)
+
+              // Walk up to find the listItem ancestor depth
+              let liDepth = -1
+              for (let d = $li.depth; d >= 1; d--) {
+                if ($li.node(d).type.name === 'listItem') {
+                  liDepth = d
+                  break
+                }
+              }
+
+              if (liDepth > 0) {
+                // Position just before this listItem inside its parent list
+                const splitPos = $li.before(liDepth)
+                const docSize = view.state.doc.content.size
+
+                if (
+                  canSplit(view.state.doc, splitPos, 1) &&
+                  (!lastSplitRef.current ||
+                    lastSplitRef.current.pos !== splitPos ||
+                    lastSplitRef.current.docSize !== docSize)
+                ) {
+                  lastSplitRef.current = { pos: splitPos, docSize }
+                  view.dispatch(view.state.tr.split(splitPos, 1))
+                  requestAnimationFrame(() => measure())
+                  return // stop — doc changed, rerun will handle the rest
+                }
+              }
+            } catch {
+              // posAtDOM failed — fall through to fallback
+            }
+
+            // Split failed (e.g. first item, or canSplit rejected) —
+            // push the entire list to the next page.
+            breakInfos.push({ pos: posBefore(el), spacerHeight })
+            currentPageHeight = blockHeight
+            brokeFallback = true
+            break // stop iterating <li> elements
+          }
+
+          // currentPageHeight === 0: list item is first on a fresh page — overflow
+          currentPageHeight += liHeight
+        }
+
+        // If we didn't fallback, li heights have been accumulated
+        // into currentPageHeight. Continue to next top-level block.
+        if (!brokeFallback) {
+          // no-op: currentPageHeight already reflects li accumulation
+        }
+        continue
+      }
+
       // ── Phase 2: split a paragraph at the page boundary ────────────────
       // If the overflowing block is a <p> and there is content above it on
       // the current page, find where the page boundary falls inside the
       // paragraph and split the ProseMirror node there via tr.split().
       // After the split the DOM will contain two paragraphs that Phase 1
       // handles naturally on the next measure pass.
-      const isParagraph = el.tagName.toLowerCase() === 'p'
+      const isParagraph = tag === 'p'
       if (isParagraph && currentPageHeight > 0) {
         const remaining = usableHeight - currentPageHeight
         const rect = el.getBoundingClientRect()
