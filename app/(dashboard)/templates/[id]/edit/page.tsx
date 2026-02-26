@@ -158,6 +158,18 @@ export default function TemplateEditPage() {
     }
   }, [templateName, templateDescription, template, loading, saveTemplate])
 
+  // Ctrl+S / Cmd+S keyboard shortcut to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        saveTemplate(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [saveTemplate])
+
   const handleManualSave = () => {
     saveTemplate(true)
   }
