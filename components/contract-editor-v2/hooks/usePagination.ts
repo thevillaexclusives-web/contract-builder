@@ -4,6 +4,7 @@ import { PAGE_CONFIG } from '../config/pageConfig'
 import { paginationSpacersKey } from '../extensions/pagination-spacers'
 import type { PageBreakInfo } from '../extensions/pagination-spacers'
 import type { EditorState } from 'prosemirror-state'
+import { canSplit } from 'prosemirror-transform'
 
 function snapToWordBoundary(state: EditorState, pos: number): number {
   const { doc } = state
@@ -171,11 +172,13 @@ export function usePagination(
           const splitPos = snapToWordBoundary(view.state, raw)
           const $pos = view.state.doc.resolve(splitPos)
 
-          // Ensure the position is inside a paragraph and not at its edges
+          // Ensure the position is a top-level paragraph (depth 1) and not at its edges
           if (
+            $pos.depth === 1 &&
             $pos.parent.type.name === 'paragraph' &&
             splitPos > $pos.start() &&
-            splitPos < $pos.end()
+            splitPos < $pos.end() &&
+            canSplit(view.state.doc, splitPos)
           ) {
             const docSize = view.state.doc.content.size
 
@@ -206,6 +209,9 @@ export function usePagination(
         currentPageHeight += blockHeight
       }
     }
+
+    // Reset split guard — it only needs to block the immediate re-measure loop
+    lastSplitRef.current = null
 
     // ── Dispatch only if break positions actually changed ───────────────
     const key = breakInfos.map((b) => `${b.pos}`).join(',')
