@@ -15,8 +15,8 @@ import {
   Undo,
   Redo,
   Table,
-  FileText,
 } from 'lucide-react'
+import type { EditorMode } from '@/types/editor'
 import ListStyleDropdown from './ListStyleDropdown'
 import TextAlignDropdown from './TextAlignDropdown'
 import FontSizeDropdown from './FontSizeDropdown'
@@ -26,6 +26,7 @@ import LineHeightDropdown from './LineHeightDropdown'
 
 interface ToolbarProps {
   editor: Editor | null
+  mode?: EditorMode
 }
 
 // Memoized Button component to prevent unnecessary re-renders
@@ -57,7 +58,8 @@ export const ToolbarButton = ({
   </button>
 )
 
-export default function Toolbar({ editor }: ToolbarProps) {
+export default function Toolbar({ editor, mode = 'template' }: ToolbarProps) {
+  const isContract = mode === 'contract'
   // Force re-render on editor state changes using a counter
   const [, setUpdateCounter] = useState(0)
 
@@ -113,11 +115,6 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
   const handleInsertTable = useCallback(() => {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-  }, [editor])
-
-
-  const handlePageBreak = useCallback(() => {
-    editor?.chain().focus().setPageBreak().run()
   }, [editor])
 
   const handleUndo = useCallback(() => {
@@ -178,44 +175,41 @@ export default function Toolbar({ editor }: ToolbarProps) {
       {/* Text Alignment */}
       <TextAlignDropdown editor={editor} />
 
-      {/* Headings */}
-      <ToolbarButton onClick={handleHeading(1)} isActive={activeStates.heading1} title="Heading 1">
-        <Heading1 className="w-4 h-4" />
-      </ToolbarButton>
-      <ToolbarButton onClick={handleHeading(2)} isActive={activeStates.heading2} title="Heading 2">
-        <Heading2 className="w-4 h-4" />
-      </ToolbarButton>
-      <ToolbarButton onClick={handleHeading(3)} isActive={activeStates.heading3} title="Heading 3">
-        <Heading3 className="w-4 h-4" />
-      </ToolbarButton>
+      {!isContract && (
+        <>
+          {/* Headings */}
+          <ToolbarButton onClick={handleHeading(1)} isActive={activeStates.heading1} title="Heading 1">
+            <Heading1 className="w-4 h-4" />
+          </ToolbarButton>
+          <ToolbarButton onClick={handleHeading(2)} isActive={activeStates.heading2} title="Heading 2">
+            <Heading2 className="w-4 h-4" />
+          </ToolbarButton>
+          <ToolbarButton onClick={handleHeading(3)} isActive={activeStates.heading3} title="Heading 3">
+            <Heading3 className="w-4 h-4" />
+          </ToolbarButton>
 
-      <div className="w-px h-6 bg-gray-300 mx-1" />
+          <div className="w-px h-6 bg-gray-300 mx-1" />
 
-      {/* Lists */}
-      <ToolbarButton onClick={handleBulletList} isActive={activeStates.bulletList} title="Bullet List">
-        <List className="w-4 h-4" />
-      </ToolbarButton>
-      <ListStyleDropdown editor={editor} isActive={activeStates.orderedList} />
-      <ToolbarButton onClick={handleBlockquote} isActive={activeStates.blockquote} title="Quote">
-        <Quote className="w-4 h-4" />
-      </ToolbarButton>
+          {/* Lists */}
+          <ToolbarButton onClick={handleBulletList} isActive={activeStates.bulletList} title="Bullet List">
+            <List className="w-4 h-4" />
+          </ToolbarButton>
+          <ListStyleDropdown editor={editor} isActive={activeStates.orderedList} />
+          <ToolbarButton onClick={handleBlockquote} isActive={activeStates.blockquote} title="Quote">
+            <Quote className="w-4 h-4" />
+          </ToolbarButton>
 
-      <div className="w-px h-6 bg-gray-300 mx-1" />
+          <div className="w-px h-6 bg-gray-300 mx-1" />
 
-      {/* Table */}
-      <ToolbarButton onClick={handleInsertTable} title="Insert Table">
-        <Table className="w-4 h-4" />
-      </ToolbarButton>
+          {/* Table */}
+          <ToolbarButton onClick={handleInsertTable} title="Insert Table">
+            <Table className="w-4 h-4" />
+          </ToolbarButton>
 
-      {/* Field Insert */}
-      <FieldInsertDropdown editor={editor} />
-
-      <div className="w-px h-6 bg-gray-300 mx-1" />
-
-      {/* Page Break */}
-      <ToolbarButton onClick={handlePageBreak} title="Insert Page Break (Ctrl+Enter)">
-        <FileText className="w-4 h-4" />
-      </ToolbarButton>
+          {/* Field Insert */}
+          <FieldInsertDropdown editor={editor} />
+        </>
+      )}
 
       <div className="w-px h-6 bg-gray-300 mx-1" />
 

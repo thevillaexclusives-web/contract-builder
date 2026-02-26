@@ -73,7 +73,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           },
         ],
       },
-      editable: mode === 'contract' ? false : editable,
+      editable,
       onUpdate: ({ editor }) => {
         if (onChange) {
           onChange(editor.getJSON())
@@ -85,50 +85,6 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
           style: 'font-size: 16px;',
           ...(mode === 'contract' ? { 'data-contract-mode': 'true' } : {}),
         },
-        handleDOMEvents: mode === 'contract' ? {
-          mousedown: (view, event) => {
-            const target = event.target as HTMLElement
-            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
-              return false
-            }
-            const fieldNode = target.closest('.field-node')
-            if (fieldNode) {
-              const input = fieldNode.querySelector('input') as HTMLInputElement
-              if (input) {
-                event.preventDefault()
-                event.stopPropagation()
-                setTimeout(() => input.focus(), 0)
-                return true
-              }
-            }
-            event.preventDefault()
-            return true
-          },
-          click: (view, event) => {
-            const target = event.target as HTMLElement
-            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
-              return false
-            }
-            if (target.closest('.field-node')) {
-              return false
-            }
-            return true
-          },
-          keydown: (view, event) => {
-            const target = event.target as HTMLElement
-            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
-              return false
-            }
-            return true
-          },
-          beforeinput: (view, event) => {
-            const target = event.target as HTMLElement
-            if (target.tagName === 'INPUT' && target.closest('.field-node')) {
-              return false
-            }
-            return true
-          },
-        } : undefined,
       },
       onBeforeCreate: ({ editor }) => {
         editor.storage.mode = mode
@@ -280,14 +236,14 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
 
     return (
       <div className={className}>
-        {showToolbar && mode !== 'contract' && (
+        {showToolbar && (
           <div className="sticky top-0 z-50 mx-auto mb-0">
             <div className="border rounded-t-lg bg-white">
-              <Toolbar editor={activeEditor} />
+              <Toolbar editor={activeEditor} mode={mode} />
             </div>
           </div>
         )}
-        <TableBubbleMenu editor={editor} />
+        {mode !== 'contract' && <TableBubbleMenu editor={editor} />}
         <EditorShell
           editor={editor}
           pageCount={pageCount}

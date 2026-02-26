@@ -91,8 +91,8 @@ export const FieldNode = Node.create({
     // Get mode from editor storage
     const mode = 'template' // Default for renderHTML, actual mode handled in addNodeView
     
-    const displayText = label || (value ? value : '')
-    
+    const displayText = value || label || '\u00a0'
+
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
@@ -100,7 +100,6 @@ export const FieldNode = Node.create({
         'data-field-label': label,
         'data-field-value': value,
         class: 'field-node',
-        style: 'border-bottom: 1px solid #333; min-width: 80px; max-width: 300px; display: inline-block; padding: 0 4px;',
       }),
       displayText,
     ]
@@ -131,31 +130,30 @@ export const FieldNode = Node.create({
 
       // Render based on mode
       if (mode === 'template') {
-        // Template mode: Show as placeholder
-        const placeholder = label || '________'
-        dom.textContent = placeholder
-        dom.style.borderBottom = '1px solid #333'
+        // Template mode: show label text or a non-breaking space as placeholder.
+        // The CSS border-bottom on .field-node provides the underline — no fake underscores needed.
+        dom.textContent = label || '\u00a0'
+        dom.setAttribute('data-field-value', value || '')
         dom.style.color = '#666'
-        dom.style.cursor = 'pointer'
+        dom.style.cursor = 'default'
         dom.style.userSelect = 'none'
         dom.style.minWidth = '80px'
         dom.style.padding = '0 4px'
-        
-        // Make it editable (click to edit label)
-        dom.addEventListener('click', (e) => {
-          e.stopPropagation()
-          const newLabel = prompt('Field label:', label || '')
-          if (newLabel !== null && editor && typeof getPos === 'function') {
-            const pos = getPos()
-            if (typeof pos === 'number') {
-              editor.commands.command(({ tr }) => {
-                tr.setNodeMarkup(pos, undefined, {
-                  ...node.attrs,
-                  label: newLabel,
-                })
-                return true
-              })
-            }
+
+        // After mount: strip padding/size if inside a table cell
+        requestAnimationFrame(() => {
+          if (dom.closest('td,th')) {
+            dom.textContent = label || '\u00a0'
+            dom.style.padding = '0'
+            dom.style.margin = '0'
+            dom.style.minWidth = '0'
+            dom.style.display = 'block'
+            dom.style.maxWidth = '100%'
+            dom.style.width = '100%'
+            dom.style.borderBottom = 'none'
+            dom.style.overflow = 'hidden'
+            dom.style.lineHeight = '1'
+            dom.style.fontSize = 'inherit'
           }
         })
       } else if (mode === 'contract') {
@@ -186,8 +184,14 @@ export const FieldNode = Node.create({
             input!.style.maxWidth = '100%'
             input!.style.minWidth = '0'
             input!.style.display = 'block'
+            input!.style.padding = '0'
+            input!.style.margin = '0'
+            input!.style.borderBottom = 'none'
             dom.style.display = 'block'
             dom.style.maxWidth = '100%'
+            dom.style.padding = '0'
+            dom.style.margin = '0'
+            dom.style.minWidth = '0'
             return
           }
           const len = textLength ?? (input!.value?.length || label?.length || 10)

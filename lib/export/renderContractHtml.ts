@@ -250,7 +250,7 @@ export function renderContractHtml(
     em { font-style: italic; }
     u { text-decoration: underline; }
 
-    /* Tables: editor uses table-layout:fixed; margin: 1em 0; td/th padding: 8px 12px */
+    /* Tables: match editor tight padding */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -259,7 +259,7 @@ export function renderContractHtml(
     }
     th, td {
       border: 1px solid #000;
-      padding: 8px 12px;
+      padding: 1px 2px;
       text-align: left;
       vertical-align: top;
       line-height: 1.5;
@@ -270,6 +270,12 @@ export function renderContractHtml(
     }
     th {
       font-weight: 700;
+    }
+
+    /* Remove paragraph margins inside table cells */
+    td p, th p {
+      margin: 0;
+      display: contents;
     }
 
     /* Blockquotes: editor uses margin: 1em 0; padding-left: 1em; border-left: 3px solid #ddd */
@@ -324,13 +330,15 @@ export function renderContractHtml(
       font-size: inherit;
     }
 
-    /* Field nodes inside tables: fit cell width, no underline, no overflow */
+    /* Field nodes inside tables: fit cell width, no underline, no padding */
     td .field-node,
     th .field-node {
       display: block;
       width: 100%;
       max-width: 100%;
       min-width: 0 !important;
+      padding: 0;
+      margin: 0;
       border-bottom: none !important;
       overflow: hidden;
       text-overflow: ellipsis;

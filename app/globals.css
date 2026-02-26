@@ -102,8 +102,8 @@
 .ProseMirror table td,
 .ProseMirror table th {
   min-width: 1em;
-  border: 1px solid #ced4da;
-  padding: 3px 5px;
+  border: 1px solid #000;;
+  padding: 1px 2px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
@@ -161,7 +161,7 @@
   list-style-type: decimal;
 }
 
-/* Field Node Styles */
+/* Field Node Styles — single underline outside tables, none inside */
 .ProseMirror .field-node {
   display: inline-block;
   min-width: 80px;
@@ -169,37 +169,38 @@
   vertical-align: baseline;
   font-size: inherit;
   font-family: inherit;
+  border-bottom: 1px solid #333;
 }
 
-/* Field nodes inside tables: fit cell width, no underline, no overflow */
+/* Field nodes inside tables: fit cell width, no underline, compact height */
 .ProseMirror table td .field-node,
 .ProseMirror table th .field-node {
-  display: block;
+  display: block !important;
   width: 100%;
   max-width: 100%;
   min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
   border-bottom: none !important;
   overflow: hidden;
+  line-height: 1;
 }
 .ProseMirror table td .field-node .field-input,
 .ProseMirror table th .field-node .field-input {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
   box-sizing: border-box;
   border-bottom: none !important;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1;
+  height: auto;
 }
 
-/* Template mode: Placeholder style */
-.ProseMirror .field-node[data-field-value=""] {
-  border-bottom: 2px dashed #ccc;
-  color: #666;
-  cursor: pointer;
-  user-select: none;
-}
-
+/* Template mode: empty field placeholder hover */
 .ProseMirror .field-node[data-field-value=""]:hover {
   border-bottom-color: #999;
   background-color: #f5f5f5;
@@ -434,8 +435,14 @@
 
 .ProseMirror table td,
 .ProseMirror table th {
-  padding: 8px 12px;
+  padding: 1px 2px;
   line-height: 1.5;
+}
+
+/* Collapse paragraphs inside table cells in all modes */
+.ProseMirror table td p,
+.ProseMirror table th p {
+  margin: 0;
 }
 
 /* ============================================
