@@ -4,6 +4,24 @@ import { PAGE_CONFIG } from '../config/pageConfig'
 import { paginationSpacersKey } from '../extensions/pagination-spacers'
 import type { PageBreakInfo } from '../extensions/pagination-spacers'
 
+/**
+ * Google-Docs–style pagination hook.
+ *
+ * Phase 1 — Break between blocks & list items:
+ *   • Flattens <ol>/<ul> to their <li> children for finer break granularity.
+ *   • Uses `posAtDOM(el, 0) - 1` so spacers sit *between* nodes, not inside.
+ *   • Pushes a block to the next page when it doesn't fit the remaining space
+ *     but would fit on a fresh page.
+ *
+ * Phase 2 — Split long paragraphs at page boundaries:
+ *   • When a <p> overflows the remaining page space, uses `posAtCoords` to
+ *     find the nearest text position at the page boundary Y-coordinate, then
+ *     dispatches `tr.split(splitPos)` to break the paragraph into two nodes.
+ *   • After the split, measure() is re-invoked via RAF so Phase 1 can handle
+ *     the newly created block boundary naturally.
+ *   • A `lastSplitRef` guard prevents infinite re-splitting at the same pos.
+ *   • Falls back to a Phase 1 break-before-paragraph if no valid split found.
+ */
 export function usePagination(
   editor: Editor | null,
   hfHeights?: { headerH: number; footerH: number }
@@ -12,6 +30,9 @@ export function usePagination(
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevBreaksRef = useRef<string>('')
   const [pageCount, setPageCount] = useState(1)
+
+  // Phase 2 guard: track last split to avoid infinite re-splitting
+  const lastSplitRef = useRef<{ pos: number; docSize: number } | null>(null)
 
   const measure = useCallback(() => {
     if (!editor || editor.isDestroyed) return
@@ -24,24 +45,52 @@ export function usePagination(
     const hH = hfHeights?.headerH ?? PAGE_CONFIG.headerHeight
     const fH = hfHeights?.footerH ?? PAGE_CONFIG.footerHeight
 
+    // Height available for body content on each page
     const usableHeight =
       PAGE_CONFIG.height - hH - fH - PAGE_CONFIG.paddingTop - PAGE_CONFIG.paddingBottom
 
+    // Height of the spacer decoration (fills header + footer + gap + padding zones)
     const spacerHeight =
       hH + fH + PAGE_CONFIG.gap + PAGE_CONFIG.paddingTop + PAGE_CONFIG.paddingBottom
 
-    // Collect top-level block elements, skipping spacers
+    // ── Phase 1: Collect breakable elements ─────────────────────────────
+    // Flatten <ol>/<ul> into their <li> children so page breaks can fall
+    // between individual list items rather than treating the whole list as
+    // a single indivisible block.
     const allChildren = proseMirror.querySelectorAll(':scope > *')
     const blocks: HTMLElement[] = []
     allChildren.forEach((el) => {
-      if (!(el as HTMLElement).classList.contains('pagination-spacer')) {
-        blocks.push(el as HTMLElement)
+      const htmlEl = el as HTMLElement
+      if (htmlEl.classList.contains('pagination-spacer')) return
+
+      const tag = htmlEl.tagName.toLowerCase()
+      if (tag === 'ol' || tag === 'ul') {
+        // Push each <li> individually for finer break granularity
+        const items = htmlEl.querySelectorAll(':scope > li')
+        items.forEach((li) => blocks.push(li as HTMLElement))
+      } else {
+        blocks.push(htmlEl)
       }
     })
 
     if (blocks.length === 0) {
       view.dispatch(view.state.tr.setMeta(paginationSpacersKey, []))
       return
+    }
+
+    /**
+     * Get the ProseMirror position BEFORE an element.
+     * `posAtDOM(el, 0)` returns the first position *inside* the node;
+     * subtracting 1 yields the position just before its opening tag,
+     * which is where we want the spacer decoration to appear.
+     */
+    const posBefore = (el: HTMLElement): number => {
+      try {
+        const inside = view.posAtDOM(el, 0)
+        return Math.max(0, inside - 1)
+      } catch {
+        return 0
+      }
     }
 
     let currentPageHeight = 0
@@ -51,23 +100,72 @@ export function usePagination(
       const isPageBreak = el.getAttribute('data-type') === 'page-break'
       const blockHeight = el.getBoundingClientRect().height
 
+      // ── Explicit page break node ──────────────────────────────────────
       if (isPageBreak) {
-        const pos = view.posAtDOM(el, 0)
-        breakInfos.push({ pos, spacerHeight })
+        breakInfos.push({ pos: posBefore(el), spacerHeight })
         currentPageHeight = 0
         continue
       }
 
-      if (currentPageHeight + blockHeight > usableHeight && currentPageHeight > 0) {
-        const pos = view.posAtDOM(el, 0)
-        breakInfos.push({ pos, spacerHeight })
+      // ── Case 1: block fits on the current page ────────────────────────
+      if (currentPageHeight + blockHeight <= usableHeight) {
+        currentPageHeight += blockHeight
+        continue
+      }
+
+      // ── Phase 2: split a paragraph at the page boundary ────────────────
+      // If the overflowing block is a <p> and there is content above it on
+      // the current page, find where the page boundary falls inside the
+      // paragraph and split the ProseMirror node there via tr.split().
+      // After the split the DOM will contain two paragraphs that Phase 1
+      // handles naturally on the next measure pass.
+      const isParagraph = el.tagName.toLowerCase() === 'p'
+      if (isParagraph && currentPageHeight > 0) {
+        const remaining = usableHeight - currentPageHeight
+        const rect = el.getBoundingClientRect()
+        const hit = view.posAtCoords({ left: rect.left + 5, top: rect.top + remaining - 1 })
+
+        if (hit) {
+          const splitPos = hit.pos
+          const $pos = view.state.doc.resolve(splitPos)
+
+          // Ensure the position is inside a paragraph and not at its edges
+          if (
+            $pos.parent.type.name === 'paragraph' &&
+            splitPos > $pos.start() &&
+            splitPos < $pos.end()
+          ) {
+            const docSize = view.state.doc.content.size
+
+            // Guard: avoid infinite re-splitting at the same position
+            if (
+              !lastSplitRef.current ||
+              lastSplitRef.current.pos !== splitPos ||
+              lastSplitRef.current.docSize !== docSize
+            ) {
+              lastSplitRef.current = { pos: splitPos, docSize }
+              view.dispatch(view.state.tr.split(splitPos))
+              // Rerun measure after the DOM updates from the split
+              requestAnimationFrame(() => measure())
+              return // stop current pass — the split changed the document
+            }
+          }
+        }
+        // Fallback: split position not found or invalid — fall through to Phase 1
+      }
+
+      // ── Phase 1: push whole block to next page ──────────────────────────
+      // The block doesn't fit on the remaining space. Push to next page.
+      if (currentPageHeight > 0) {
+        breakInfos.push({ pos: posBefore(el), spacerHeight })
         currentPageHeight = blockHeight
       } else {
+        // Block is the first on the page and still overflows — just overflow
         currentPageHeight += blockHeight
       }
     }
 
-    // Only update if breaks changed
+    // ── Dispatch only if break positions actually changed ───────────────
     const key = breakInfos.map((b) => `${b.pos}`).join(',')
     if (key === prevBreaksRef.current) return
     prevBreaksRef.current = key
