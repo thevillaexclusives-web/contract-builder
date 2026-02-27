@@ -292,12 +292,12 @@ export function usePageLayout(
             }
           }
 
-          // ── Trim trailing empty list item ──────────────────────────────────
-          // Templates often end a page with a list that has a trailing empty <li>
-          // (created by pressing Enter at the end of a list near the page boundary).
-          // This empty item can be the first thing that overflows, causing a
-          // split → pull-back oscillation. Delete it instead of paginating it,
-          // but only when the list has other (non-empty) items.
+          // ── Handle trailing empty list item ─────────────────────────────────
+          // If the last block is a list ending with an empty <li> (from pressing
+          // Enter at the end of a list near the page boundary):
+          //   - If that empty <li> overflows: split the list before it so the
+          //     tail (containing the empty item) moves to the next page.
+          //   - If it does NOT overflow (fits on page): delete it as cruft.
           if (
             overflowIdx === lastChildIdx &&
             overflowEl &&
@@ -308,6 +308,9 @@ export function usePageLayout(
               const lastLi = allLis[allLis.length - 1] as HTMLElement
               if (isEmptyListItemDom(lastLi)) {
                 try {
+                  const bodyBottomY = getBodyBottomY(pageDom)
+                  const lastLiOverflows = lastLi.getBoundingClientRect().bottom > bodyBottomY + 0.5
+
                   const liPosInside = view.posAtDOM(lastLi, 0)
                   const $li = view.state.doc.resolve(liPosInside)
 
@@ -323,14 +326,70 @@ export function usePageLayout(
                   }
 
                   if (liDepth >= 1) {
-                    const from = $li.before(liDepth)
-                    const to = from + $li.node(liDepth).nodeSize
-                    const tr = view.state.tr.delete(from, to)
-                    tr.setMeta(layoutMetaKey, true)
-                    view.dispatch(tr)
-                    moves++
-                    didMutate = true
-                    return
+                    if (lastLiOverflows) {
+                      // Split the list before the empty <li> so the tail gets
+                      // moved to the next page by the next layout tick.
+                      const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+                      const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
+
+                      let listDepth = -1
+                      for (let d = liDepth - 1; d >= 1; d--) {
+                        const t = $li.node(d).type
+                        if ((orderedListType && t === orderedListType) || (bulletListType && t === bulletListType)) {
+                          listDepth = d
+                          break
+                        }
+                      }
+
+                      const splitPos = $li.before(liDepth)
+                      const docSize = view.state.doc.content.size
+
+                      if (
+                        canSplit(view.state.doc, splitPos, 1) &&
+                        (!lastSplitRef.current ||
+                          lastSplitRef.current.pos !== splitPos ||
+                          lastSplitRef.current.docSize !== docSize)
+                      ) {
+                        lastSplitRef.current = { pos: splitPos, docSize }
+                        const tr = view.state.tr.split(splitPos, 1)
+
+                        // Preserve ordered-list start on the tail list
+                        if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
+                          const originalListNode = $li.node(listDepth)
+                          const originalStart = (originalListNode.attrs?.start as number) ?? 1
+                          const nextStart = originalStart + (allLis.length - 1)
+
+                          const mapped = tr.mapping.map(splitPos, 1)
+                          const $mapped = tr.doc.resolve(mapped)
+
+                          for (let d = $mapped.depth; d >= 1; d--) {
+                            if ($mapped.node(d).type === orderedListType) {
+                              tr.setNodeMarkup($mapped.before(d), undefined, {
+                                ...$mapped.node(d).attrs,
+                                start: nextStart,
+                              })
+                              break
+                            }
+                          }
+                        }
+
+                        tr.setMeta(layoutMetaKey, true)
+                        view.dispatch(tr)
+                        moves++
+                        didMutate = true
+                        return
+                      }
+                    } else {
+                      // Empty <li> fits on page — delete it as cruft.
+                      const from = $li.before(liDepth)
+                      const to = from + $li.node(liDepth).nodeSize
+                      const tr = view.state.tr.delete(from, to)
+                      tr.setMeta(layoutMetaKey, true)
+                      view.dispatch(tr)
+                      moves++
+                      didMutate = true
+                      return
+                    }
                   }
                 } catch {
                   // fall through to list split / whole-block move
