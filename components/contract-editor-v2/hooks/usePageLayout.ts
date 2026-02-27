@@ -327,8 +327,8 @@ export function usePageLayout(
 
                   if (liDepth >= 1) {
                     if (lastLiOverflows) {
-                      // Split the list before the empty <li> so the tail gets
-                      // moved to the next page by the next layout tick.
+                      // Split the list before the empty <li>, then move the
+                      // tail list to the next page — all in one transaction.
                       const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
                       const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
 
@@ -357,7 +357,8 @@ export function usePageLayout(
                         if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
                           const originalListNode = $li.node(listDepth)
                           const originalStart = (originalListNode.attrs?.start as number) ?? 1
-                          const nextStart = originalStart + (allLis.length - 1)
+                          const splitIndex = allLis.length - 1
+                          const nextStart = originalStart + splitIndex
 
                           const mapped = tr.mapping.map(splitPos, 1)
                           const $mapped = tr.doc.resolve(mapped)
@@ -369,6 +370,57 @@ export function usePageLayout(
                                 start: nextStart,
                               })
                               break
+                            }
+                          }
+                        }
+
+                        // Move the tail list to the next page in the same transaction
+                        const mappedPos = tr.mapping.map(splitPos, 1)
+                        const $m = tr.doc.resolve(mappedPos)
+
+                        // Find the tail list node (ordered/bullet) at/above mappedPos
+                        let tailListDepth = -1
+                        for (let d = $m.depth; d >= 1; d--) {
+                          const nType = $m.node(d).type
+                          if ((orderedListType && nType === orderedListType) || (bulletListType && nType === bulletListType)) {
+                            tailListDepth = d
+                            break
+                          }
+                        }
+
+                        if (tailListDepth >= 1) {
+                          const tailListNode = $m.node(tailListDepth)
+                          const tailListPos = $m.before(tailListDepth)
+
+                          // Delete tail list from current page location
+                          tr.delete(tailListPos, tailListPos + tailListNode.nodeSize)
+
+                          // Find page boundaries in the UPDATED tr.doc
+                          const pt = tr.doc.type.schema.nodes.page
+                          let currentPagePos = -1
+                          let currentPageEnd = -1
+                          let nextPagePos = -1
+
+                          let scanIdx = 0
+                          tr.doc.forEach((n, o) => {
+                            if (n.type !== pt) return
+                            if (scanIdx === pageIndex) {
+                              currentPagePos = o
+                              currentPageEnd = o + n.nodeSize
+                            } else if (scanIdx === pageIndex + 1) {
+                              nextPagePos = o
+                            }
+                            scanIdx++
+                          })
+
+                          if (currentPagePos >= 0) {
+                            if (nextPagePos >= 0) {
+                              // Insert into existing next page at the beginning
+                              tr.insert(nextPagePos + 1, tailListNode)
+                            } else {
+                              // Create a new page containing the tail list
+                              const newPage = pt.create(null, tailListNode)
+                              tr.insert(currentPageEnd, newPage)
                             }
                           }
                         }
