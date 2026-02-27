@@ -262,8 +262,13 @@ export function usePageLayout(
           }
 
           // ── List split (optional) ─────────────────────────────────────────
+          // ── List split (optional) ─────────────────────────────────────────
+          // Only attempt to split lists when the LIST itself is the last block on the page.
+          // If overflow happens earlier in the page, we first move trailing blocks (handled by the
+          // whole-block move fallback) until the overflow block becomes last. This avoids thrash.
           if (
             overflowEl &&
+            overflowIdx === lastChildIdx &&
             (overflowEl.tagName.toLowerCase() === 'ol' || overflowEl.tagName.toLowerCase() === 'ul')
           ) {
             const bodyBottomY = getBodyBottomY(pageDom)
@@ -277,7 +282,12 @@ export function usePageLayout(
               }
             }
 
-            if (splitLiIdx > 0) {
+            // If the FIRST list item already overflows the page body, there is no valid place
+            // to split "before" it. In that case we fall through to the whole-block move, which
+            // moves the entire list to the next page (stable behavior, no giant jumps).
+            if (splitLiIdx === 0) {
+              // fall through
+            } else if (splitLiIdx > 0) {
               try {
                 const liEl = liElements[splitLiIdx] as HTMLElement
                 const liPosInside = view.posAtDOM(liEl, 0)
@@ -318,6 +328,7 @@ export function usePageLayout(
                     lastSplitRef.current = { pos: splitPos, docSize }
                     const tr = view.state.tr.split(splitPos, 1)
 
+                    // Ordered-list numbering continuity
                     if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
                       const originalListNode = $li.node(listDepth)
                       const originalStart = (originalListNode.attrs?.start as number) ?? 1
@@ -350,12 +361,19 @@ export function usePageLayout(
             }
           }
 
-          // ── Fall through: move whole last block ───────────────────────────
+          // ── Fall through: move blocks to next page (guarantee progress) ─────
           lastSplitRef.current = null
 
-          const blockToMove = pageNode.child(lastChildIdx)
+          // If overflow occurs in the middle of the page, first peel off trailing blocks.
+          // This makes the overflowing block eventually become the last child, which
+          // allows paragraph/list splitting logic to apply cleanly and prevents thrash.
+          const idxToMove = overflowIdx >= 0 && overflowIdx < lastChildIdx ? lastChildIdx : lastChildIdx
+
+          const blockToMove = pageNode.child(idxToMove)
+
+          // Compute absolute doc positions for the block we are moving
           let blockStart = pageOffset + 1
-          for (let c = 0; c < lastChildIdx; c++) {
+          for (let c = 0; c < idxToMove; c++) {
             blockStart += pageNode.child(c).nodeSize
           }
           const blockEnd = blockStart + blockToMove.nodeSize
