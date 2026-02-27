@@ -466,23 +466,6 @@
   box-sizing: border-box;
 }
 
-/* Page node — each one renders as an A4 paper sheet */
-.editor-v2-shell .ProseMirror .pm-page {
-  width: 794px;
-  min-height: 1123px;
-  padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 96px) 64px;
-  background: white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  box-sizing: border-box;
-  position: relative;
-  margin: 0 auto 24px auto;
-}
-
-/* Remove bottom margin on the last page */
-.editor-v2-shell .ProseMirror .pm-page:last-child {
-  margin-bottom: 0;
-}
-
 /* V2 Overlay */
 .editor-v2-overlay {
   position: absolute;
@@ -586,13 +569,30 @@
   background: transparent !important;
 }
 
-/* Page node owns the page padding + paper visuals */
+/* V2: ProseMirror is wrapper only */
+.editor-v2-shell .ProseMirror {
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: auto !important;
+  background: transparent !important;
+  overflow: visible !important; /* wrapper can be visible */
+}
+
+/* Remove bottom margin on the last page */
+.editor-v2-shell .ProseMirror .pm-page:last-child {
+  margin-bottom: 0;
+}
+
+/* V2: each page is fixed and clips overflow (until pagination moves it) */
 .editor-v2-shell .ProseMirror .pm-page {
+  width: 794px;
+  height: 1123px;
   box-sizing: border-box;
-  min-height: 1123px;
   padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 120px) 64px;
   background: #fff;
   margin: 0 auto 24px auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  overflow: hidden;
 }
 
 /* Table cell paragraphs: DO NOT use display: contents (breaks ProseMirror) */

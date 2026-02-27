@@ -50,7 +50,7 @@ function snapToWordBoundary(state: EditorState, pos: number): number {
 /** Meta key used to tag layout transactions so the update handler can ignore them. */
 export const layoutMetaKey = new PluginKey('pageLayout')
 
-const MAX_MOVES = 30
+const MAX_MOVES = 200
 
 /**
  * Page-layout hook for the page-node editor model.
@@ -190,6 +190,14 @@ export function usePageLayout(
         return true
       }
 
+      // ── Diagnostic: log page count at start of layout tick ─────────────
+      {
+        const pageType = view.state.doc.type.schema.nodes.page
+        let pc = 0
+        view.state.doc.forEach((n) => { if (n.type === pageType) pc++ })
+        console.log('layout tick', pc)
+      }
+
       // ── Phase 1: push overflowing blocks forward ─────────────────────────
       // When the overflowing element is the last child on the page AND is a
       // paragraph or list that straddles the boundary, try to split it.
@@ -214,6 +222,8 @@ export function usePageLayout(
 
           const overflowIdx = findOverflowIndex(pageDom)
           if (overflowIdx < 0) { pageIndex++; return }
+
+          console.log('overflow on page', pageIndex)
 
           const lastChildIdx = pageNode.childCount - 1
           if (lastChildIdx < 0) { pageIndex++; return }
@@ -513,10 +523,7 @@ export function usePageLayout(
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current)
     }
-    // Double-RAF: let ProseMirror DOM flush before measuring
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = requestAnimationFrame(measure)
-    })
+    rafRef.current = requestAnimationFrame(measure)
   }, [measure])
 
   useEffect(() => {
@@ -524,7 +531,7 @@ export function usePageLayout(
 
     // Initial measurement after fonts are ready
     document.fonts?.ready.then(() => {
-      requestAnimationFrame(() => requestAnimationFrame(measure))
+      requestAnimationFrame(measure)
     })
 
     const onUpdate = ({ transaction }: { editor: Editor; transaction: { getMeta: (key: PluginKey) => unknown } }) => {
