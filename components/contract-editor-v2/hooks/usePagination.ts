@@ -131,49 +131,58 @@ export function usePagination(
       }
     }
 
-    let currentPageHeight = 0
+    // ── B) Viewport-based page boundary ─────────────────────────────────
+    // Instead of accumulating block heights, compute an absolute Y boundary
+    // for each page and check `rect.bottom > pageBottomY`.  This accounts
+    // for CSS margins / padding that pure height accumulation can miss and
+    // prevents content from sliding under the footer overlay.
+    const containerRect = proseMirror.getBoundingClientRect()
+    const bodyPadTop = PAGE_CONFIG.paddingTop + hH
+    // Bottom of the usable content area on the current page (viewport Y).
+    let pageBottomY = containerRect.top + bodyPadTop + usableHeight
+
     const breakInfos: PageBreakInfo[] = []
 
     for (const el of blocks) {
+      const rect = el.getBoundingClientRect()
       const isPageBreak = el.getAttribute('data-type') === 'page-break'
-      const blockHeight = el.getBoundingClientRect().height
 
       // ── Explicit page break node ──────────────────────────────────────
       if (isPageBreak) {
         breakInfos.push({ pos: posBefore(el), spacerHeight })
-        currentPageHeight = 0
+        pageBottomY += spacerHeight + usableHeight
         continue
       }
 
-      // ── Case 1: block fits on the current page ────────────────────────
-      if (currentPageHeight + blockHeight <= usableHeight) {
-        currentPageHeight += blockHeight
+      // ── Block fits: rect.bottom within the current page boundary ──────
+      if (rect.bottom <= pageBottomY + 0.5) {
         continue
       }
+
+      // ── Overflow detected ─────────────────────────────────────────────
+      const tag = el.tagName.toLowerCase()
+      // Is there visible content above this element on the current page?
+      const pageTopY = pageBottomY - usableHeight
+      const hasContentAbove = rect.top > pageTopY + 0.5
 
       // ── List handling: per-item measurement with list splitting ────────
-      // Lists stay as top-level blocks. We measure each <li> individually
-      // to find where the page boundary falls, then split the ProseMirror
-      // list node at that boundary via tr.split(). After the split the two
-      // halves become separate top-level blocks and Phase 1 inserts a
-      // spacer between them on the next measure pass.
-      const tag = el.tagName.toLowerCase()
       if (tag === 'ol' || tag === 'ul') {
         const liElements = el.querySelectorAll(':scope > li')
 
         let brokeFallback = false
         for (let i = 0; i < liElements.length; i++) {
           const liEl = liElements[i] as HTMLElement
-          const liHeight = liEl.getBoundingClientRect().height
+          const liRect = liEl.getBoundingClientRect()
 
-          // Li fits on current page — accumulate and continue
-          if (currentPageHeight + liHeight <= usableHeight) {
-            currentPageHeight += liHeight
+          // Li fits on current page
+          if (liRect.bottom <= pageBottomY + 0.5) {
             continue
           }
 
-          // This <li> overflows — try to split the list before it
-          if (currentPageHeight > 0) {
+          // This <li> overflows — try to split the list before it.
+          // Allow split when there is content above OR earlier items in
+          // the same list (i > 0) that already occupy space on the page.
+          if (hasContentAbove || i > 0) {
             try {
               const liPosInside = view.posAtDOM(liEl, 0)
               const $li = view.state.doc.resolve(liPosInside)
@@ -188,7 +197,6 @@ export function usePagination(
               }
 
               if (liDepth > 0) {
-                // Position just before this listItem inside its parent list
                 const splitPos = $li.before(liDepth)
                 const docSize = view.state.doc.content.size
 
@@ -199,7 +207,29 @@ export function usePagination(
                     lastSplitRef.current.docSize !== docSize)
                 ) {
                   lastSplitRef.current = { pos: splitPos, docSize }
-                  view.dispatch(view.state.tr.split(splitPos, 1))
+
+                  const tr = view.state.tr.split(splitPos, 1)
+
+                  // A) For <ol>, set `start` on the new (second) list so
+                  // numbering continues across the page split.
+                  if (tag === 'ol') {
+                    const listNode = $li.node(liDepth - 1)
+                    const originalStart = (listNode.attrs?.start as number) ?? 1
+                    const nextStart = originalStart + i
+                    const mapped = tr.mapping.map(splitPos, 1)
+                    const $mapped = tr.doc.resolve(mapped)
+                    for (let d = $mapped.depth; d >= 1; d--) {
+                      if ($mapped.node(d).type.name === 'orderedList') {
+                        tr.setNodeMarkup($mapped.before(d), undefined, {
+                          ...$mapped.node(d).attrs,
+                          start: nextStart,
+                        })
+                        break
+                      }
+                    }
+                  }
+
+                  view.dispatch(tr)
                   requestAnimationFrame(() => measure())
                   return // stop — doc changed, rerun will handle the rest
                 }
@@ -211,76 +241,65 @@ export function usePagination(
             // Split failed (e.g. first item, or canSplit rejected) —
             // push the entire list to the next page.
             breakInfos.push({ pos: posBefore(el), spacerHeight })
-            currentPageHeight = blockHeight
+            pageBottomY += spacerHeight + usableHeight
             brokeFallback = true
             break // stop iterating <li> elements
           }
 
-          // currentPageHeight === 0: list item is first on a fresh page — overflow
-          currentPageHeight += liHeight
+          // First item on a fresh page and no content above — just overflow
+          break
         }
 
-        // If we didn't fallback, li heights have been accumulated
-        // into currentPageHeight. Continue to next top-level block.
         if (!brokeFallback) {
-          // no-op: currentPageHeight already reflects li accumulation
+          // All items processed; no break needed within this list
         }
         continue
       }
 
       // ── Phase 2: split a paragraph at the page boundary ────────────────
-      // If the overflowing block is a <p> and there is content above it on
-      // the current page, find where the page boundary falls inside the
-      // paragraph and split the ProseMirror node there via tr.split().
-      // After the split the DOM will contain two paragraphs that Phase 1
-      // handles naturally on the next measure pass.
       const isParagraph = tag === 'p'
-      if (isParagraph && currentPageHeight > 0) {
-        const remaining = usableHeight - currentPageHeight
-        const rect = el.getBoundingClientRect()
-        const hit = view.posAtCoords({ left: rect.left + 5, top: rect.top + remaining - 1 })
+      if (isParagraph && hasContentAbove) {
+        // How much of the paragraph fits on this page (viewport distance)
+        const remaining = pageBottomY - rect.top
+        if (remaining > 0) {
+          const hit = view.posAtCoords({ left: rect.left + 5, top: rect.top + remaining - 1 })
 
-        if (hit) {
-          const raw = hit.pos
-          const splitPos = snapToWordBoundary(view.state, raw)
-          const $pos = view.state.doc.resolve(splitPos)
+          if (hit) {
+            const splitPos = snapToWordBoundary(view.state, hit.pos)
+            const $pos = view.state.doc.resolve(splitPos)
 
-          // Ensure the position is a top-level paragraph (depth 1) and not at its edges
-          if (
-            $pos.depth === 1 &&
-            $pos.parent.type.name === 'paragraph' &&
-            splitPos > $pos.start() &&
-            splitPos < $pos.end() &&
-            canSplit(view.state.doc, splitPos)
-          ) {
-            const docSize = view.state.doc.content.size
-
-            // Guard: avoid infinite re-splitting at the same position
             if (
-              !lastSplitRef.current ||
-              lastSplitRef.current.pos !== splitPos ||
-              lastSplitRef.current.docSize !== docSize
+              $pos.depth === 1 &&
+              $pos.parent.type.name === 'paragraph' &&
+              splitPos > $pos.start() &&
+              splitPos < $pos.end() &&
+              canSplit(view.state.doc, splitPos)
             ) {
-              lastSplitRef.current = { pos: splitPos, docSize }
-              view.dispatch(view.state.tr.split(splitPos))
-              // Rerun measure after the DOM updates from the split
-              requestAnimationFrame(() => measure())
-              return // stop current pass — the split changed the document
+              const docSize = view.state.doc.content.size
+
+              if (
+                !lastSplitRef.current ||
+                lastSplitRef.current.pos !== splitPos ||
+                lastSplitRef.current.docSize !== docSize
+              ) {
+                lastSplitRef.current = { pos: splitPos, docSize }
+                view.dispatch(view.state.tr.split(splitPos))
+                requestAnimationFrame(() => measure())
+                return
+              }
             }
           }
         }
-        // Fallback: split position not found or invalid — fall through to Phase 1
+        // Fallback: split position not found — fall through to Phase 1
       }
 
       // ── Phase 1: push whole block to next page ──────────────────────────
-      // The block doesn't fit on the remaining space. Push to next page.
-      if (currentPageHeight > 0) {
+      if (hasContentAbove) {
         breakInfos.push({ pos: posBefore(el), spacerHeight })
-        currentPageHeight = blockHeight
-      } else {
-        // Block is the first on the page and still overflows — just overflow
-        currentPageHeight += blockHeight
+        pageBottomY += spacerHeight + usableHeight
       }
+      // else: first block on page, overflows — just continue (next pass
+      // will have the spacer in DOM and can handle subsequent breaks)
     }
 
     // Reset split guard — it only needs to block the immediate re-measure loop
