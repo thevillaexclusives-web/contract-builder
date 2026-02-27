@@ -17,6 +17,26 @@ const isEffectivelyEmptyPage = (page: PMNode) => {
   return true
 }
 
+/**
+ * Detect an "empty" DOM `<li>` — no real text content, only a ProseMirror
+ * trailing break or an empty paragraph.  Strips &nbsp; (\u00a0) before checking.
+ */
+const isEmptyListItemDom = (li: HTMLElement): boolean => {
+  const text = (li.textContent || '').replace(/\u00a0/g, '').trim()
+  if (text.length > 0) return false
+
+  if (li.querySelector('br.ProseMirror-trailingBreak')) return true
+
+  const paragraphs = li.querySelectorAll('p')
+  if (paragraphs.length === 0) return true
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    const t = (paragraphs[i].textContent || '').replace(/\u00a0/g, '').trim()
+    if (t.length > 0) return false
+  }
+  return true
+}
+
 /** Snap a doc position to the nearest whitespace boundary within ±30 chars. */
 function snapToWordBoundary(state: EditorState, pos: number): number {
   const { doc } = state
@@ -272,6 +292,53 @@ export function usePageLayout(
             }
           }
 
+          // ── Trim trailing empty list item ──────────────────────────────────
+          // Templates often end a page with a list that has a trailing empty <li>
+          // (created by pressing Enter at the end of a list near the page boundary).
+          // This empty item can be the first thing that overflows, causing a
+          // split → pull-back oscillation. Delete it instead of paginating it,
+          // but only when the list has other (non-empty) items.
+          if (
+            overflowIdx === lastChildIdx &&
+            overflowEl &&
+            (overflowEl.tagName.toLowerCase() === 'ol' || overflowEl.tagName.toLowerCase() === 'ul')
+          ) {
+            const allLis = overflowEl.querySelectorAll(':scope > li')
+            if (allLis.length > 1) {
+              const lastLi = allLis[allLis.length - 1] as HTMLElement
+              if (isEmptyListItemDom(lastLi)) {
+                try {
+                  const liPosInside = view.posAtDOM(lastLi, 0)
+                  const $li = view.state.doc.resolve(liPosInside)
+
+                  const schemaNodes = view.state.schema.nodes
+                  const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+
+                  let liDepth = -1
+                  for (let d = $li.depth; d >= 1; d--) {
+                    if (listItemType && $li.node(d).type === listItemType) {
+                      liDepth = d
+                      break
+                    }
+                  }
+
+                  if (liDepth >= 1) {
+                    const from = $li.before(liDepth)
+                    const to = from + $li.node(liDepth).nodeSize
+                    const tr = view.state.tr.delete(from, to)
+                    tr.setMeta(layoutMetaKey, true)
+                    view.dispatch(tr)
+                    moves++
+                    didMutate = true
+                    return
+                  }
+                } catch {
+                  // fall through to list split / whole-block move
+                }
+              }
+            }
+          }
+
           // ── List split (optional) ─────────────────────────────────────────
           // Only attempt to split lists when the LIST itself is the last block on the page.
           // If overflow happens earlier in the page, we first move trailing blocks (handled by the
@@ -442,11 +509,6 @@ export function usePageLayout(
       }
 
       // ── Remove trailing empty pages ───────────────────────────────────
-      // ====================== REPLACE START ======================
-      // (This replaces the existing "Remove trailing empty pages" block
-      //  AND the existing "Update page count" block directly after it.)
-
-      // ── Remove trailing empty pages ───────────────────────────────────
       // Pages that contain only empty paragraphs should be removed at the end.
       // Keep at least one page.
       //
@@ -494,9 +556,6 @@ export function usePageLayout(
         })
         setPageCount(Math.max(1, count))
       }
-      // ====================== REPLACE END ======================
-      // (The code after this should continue with your `} finally { ... }` etc.)
-
     } finally {
       isLayingOutRef.current = false
     }
