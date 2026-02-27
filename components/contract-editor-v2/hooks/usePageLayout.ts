@@ -47,24 +47,18 @@ function snapToWordBoundary(state: EditorState, pos: number): number {
   return clamped
 }
 
-/** Meta key used to tag layout transactions so the update handler can ignore them. */
-export const layoutMetaKey = new PluginKey('pageLayout')
-
+export const layoutMetaKey = new PluginKey('pageLayoutMeta')
 const MAX_MOVES = 200
 
 /**
- * Page-layout hook for the page-node editor model.
+ * V2 "pages mode" layout engine.
  *
- * On every editor update (that is NOT itself a layout transaction) it:
- *   1. Measures each `.pm-page` DOM node to find overflow.
- *   2. Moves the last block of an overflowing page to the start of the next
- *      page (creating a new page node if needed).
- *   3. Pulls blocks back from a next page when they would fit on the
- *      previous page, so pages stay full.
- *   4. Removes any empty pages left over.
+ * Key invariant:
+ * - Header/footer are overlays.
+ * - The ONLY reliable definition of "safe body area" is the page element's
+ *   computed padding (padding-top and padding-bottom).
  *
- * All mutations happen in a single ProseMirror transaction tagged with
- * `layoutMetaKey` so they don't re-trigger the layout loop.
+ * So we compute bodyTop/bodyBottom using getComputedStyle(pageEl).
  */
 export function usePageLayout(
   editor: Editor | null,
@@ -72,7 +66,6 @@ export function usePageLayout(
 ): { pageCount: number } {
   const rafRef = useRef<number>(0)
   const isLayingOutRef = useRef(false)
-  // Guard: prevent re-splitting the same paragraph at the same position
   const lastSplitRef = useRef<{ pos: number; docSize: number } | null>(null)
   const [pageCount, setPageCount] = useState(1)
 
@@ -88,36 +81,40 @@ export function usePageLayout(
 
       const hH = hfHeights?.headerH ?? PAGE_CONFIG.headerHeight
       const fH = hfHeights?.footerH ?? PAGE_CONFIG.footerHeight
-      const bodyHeight =
-        PAGE_CONFIG.height - hH - fH - PAGE_CONFIG.paddingTop - PAGE_CONFIG.paddingBottom
 
-      // ── Helper: compute the body bottom Y for a page DOM node ────────────
-      const getBodyBottomY = (pageEl: HTMLElement): number => {
-        const pageRect = pageEl.getBoundingClientRect()
-        return pageRect.top + PAGE_CONFIG.paddingTop + hH + bodyHeight
+      /**
+       * Compute the usable body box for a page in viewport coordinates.
+       * Uses computed padding from the `.pm-page` element as the source of truth.
+       */
+      const getBodyBox = (pageEl: HTMLElement): { top: number; bottom: number } => {
+        const rect = pageEl.getBoundingClientRect()
+        const cs = window.getComputedStyle(pageEl)
+        const padTop = Number.parseFloat(cs.paddingTop || '0') || 0
+        const padBottom = Number.parseFloat(cs.paddingBottom || '0') || 0
+
+        // Fallback if padding is 0 during initial paint / CSS not yet applied.
+        const fallbackTop = rect.top + PAGE_CONFIG.paddingTop + hH
+        const fallbackBottom = rect.top + PAGE_CONFIG.height - PAGE_CONFIG.paddingBottom - fH
+
+        const top = padTop > 0 ? rect.top + padTop : fallbackTop
+        const bottom = padBottom > 0 ? rect.bottom - padBottom : fallbackBottom
+        return { top, bottom }
       }
 
-      // ── Helper: find the first overflowing child index in a page DOM node ──
-      const findOverflowIndex = (pageEl: HTMLElement): number => {
-        const bodyBottomY = getBodyBottomY(pageEl)
+      const getBodyBottomY = (pageEl: HTMLElement): number => getBodyBox(pageEl).bottom
 
+      const findOverflowIndex = (pageEl: HTMLElement): number => {
+        const { bottom: bodyBottomY } = getBodyBox(pageEl)
         const children = pageEl.children
         for (let i = 0; i < children.length; i++) {
           const child = children[i] as HTMLElement
-          if (child.getBoundingClientRect().bottom > bodyBottomY + 0.5) {
-            return i
-          }
+          if (child.getBoundingClientRect().bottom > bodyBottomY + 0.5) return i
         }
-        return -1 // no overflow
+        return -1
       }
 
-      // ── Helper: would a block from the next page fit on a page? ──────────
-      // Checks if adding the first block of `nextPageEl` would still fit
-      // within the body area of `pageEl`.
       const canPullBlock = (pageEl: HTMLElement, nextPageEl: HTMLElement): boolean => {
-        const pageRect = pageEl.getBoundingClientRect()
-        const bodyTopY = pageRect.top + PAGE_CONFIG.paddingTop + hH
-        const bodyBottomY = bodyTopY + bodyHeight
+        const { top: bodyTopY, bottom: bodyBottomY } = getBodyBox(pageEl)
 
         // Current content bottom inside this page
         const children = pageEl.children
@@ -128,39 +125,31 @@ export function usePageLayout(
           if (r.bottom > contentBottom) contentBottom = r.bottom
         }
 
-        // Height of the first block on the next page
+        // Height of first block on next page
         const nextChildren = nextPageEl.children
         let firstBlockHeight = 0
         for (let i = 0; i < nextChildren.length; i++) {
-          const child = nextChildren[i] as HTMLElement
-          firstBlockHeight = child.getBoundingClientRect().height
+          firstBlockHeight = (nextChildren[i] as HTMLElement).getBoundingClientRect().height
           break
         }
         if (firstBlockHeight === 0) return false
 
-        // 2px safety buffer reduces push/pull oscillation at the boundary
+        // tiny buffer to avoid oscillation
         return contentBottom + firstBlockHeight <= bodyBottomY - 2
       }
 
-      // ── Helper: find the next page offset given a page index ─────────────
-      const findNextPageOffset = (
-        doc: PMNode,
-        pageType: NodeType,
-        targetIndex: number
-      ): number => {
+      const findNextPageOffset = (doc: PMNode, pageType: NodeType, targetIndex: number): number => {
         let nextPageOffset = -1
         let scanIdx = 0
         doc.forEach((n, o) => {
-          if (n.type === pageType && scanIdx === targetIndex) {
-            nextPageOffset = o
+          if (n.type === pageType) {
+            if (scanIdx === targetIndex) nextPageOffset = o
+            scanIdx++
           }
-          scanIdx++
         })
         return nextPageOffset
       }
 
-      // ── Helper: move a block node to the start of the next page ──────────
-      // Returns true if a mutation was dispatched.
       const moveBlockToNextPage = (
         blockNode: PMNode,
         blockStart: number,
@@ -190,20 +179,7 @@ export function usePageLayout(
         return true
       }
 
-      // ── Diagnostic: log page count at start of layout tick ─────────────
-      {
-        const pageType = view.state.doc.type.schema.nodes.page
-        let pc = 0
-        view.state.doc.forEach((n) => { if (n.type === pageType) pc++ })
-        console.log('layout tick', pc)
-      }
-
       // ── Phase 1: push overflowing blocks forward ─────────────────────────
-      // When the overflowing element is the last child on the page AND is a
-      // paragraph or list that straddles the boundary, try to split it.
-      // Otherwise (or if the overflow is not the last child), move the last
-      // block to the next page. Moving trailing blocks first ensures the
-      // overflow element eventually becomes the last child for splitting.
       let moves = 0
       let didMutate = true
 
@@ -218,63 +194,149 @@ export function usePageLayout(
           if (pageNode.type !== pageType) return
 
           const pageDom = view.nodeDOM(pageOffset) as HTMLElement | null
-          if (!pageDom || !pageDom.classList.contains('pm-page')) return
+          if (!pageDom || !pageDom.classList.contains('pm-page')) {
+            pageIndex++
+            return
+          }
 
           const overflowIdx = findOverflowIndex(pageDom)
-          if (overflowIdx < 0) { pageIndex++; return }
-
-          console.log('overflow on page', pageIndex)
+          if (overflowIdx < 0) {
+            pageIndex++
+            return
+          }
 
           const lastChildIdx = pageNode.childCount - 1
-          if (lastChildIdx < 0) { pageIndex++; return }
+          if (lastChildIdx < 0) {
+            pageIndex++
+            return
+          }
 
-          // Single block on the page and it overflows — can't move it
           if (pageNode.childCount <= 1 && overflowIdx === 0) {
             pageIndex++
             return
           }
 
-          // ── Only attempt splits when the overflow element is the last
-          // child on the page. If there are blocks after the overflow,
-          // skip straight to moving the last block; subsequent iterations
-          // will clear trailing blocks until the overflow element is last.
-          if (overflowIdx === lastChildIdx) {
-            const overflowEl = pageDom.children[overflowIdx] as HTMLElement | null
+          const overflowEl = pageDom.children[overflowIdx] as HTMLElement | null
 
-            // ── Try paragraph split ──────────────────────────────────────
-            // Only when the paragraph starts ABOVE the page boundary
-            // (straddles it), so splitting keeps the top part on this page.
-            if (
-              overflowEl &&
-              overflowEl.tagName.toLowerCase() === 'p'
-            ) {
-              const bodyBottomY = getBodyBottomY(pageDom)
-              const elRect = overflowEl.getBoundingClientRect()
-              const remaining = bodyBottomY - elRect.top
+          // ── Paragraph split (only if last block) ─────────────────────────
+          if (
+            overflowEl &&
+            overflowEl.tagName.toLowerCase() === 'p' &&
+            overflowIdx === lastChildIdx
+          ) {
+            const bodyBottomY = getBodyBottomY(pageDom)
+            const elRect = overflowEl.getBoundingClientRect()
+            const remaining = bodyBottomY - elRect.top
 
-              if (remaining > 0) {
-                const hit = view.posAtCoords({
-                  left: elRect.left + 5,
-                  top: elRect.top + remaining - 1,
-                })
+            if (remaining > 0) {
+              const hit = view.posAtCoords({
+                left: elRect.left + 5,
+                top: bodyBottomY - 1,
+              })
 
-                if (hit) {
-                  const splitPos = snapToWordBoundary(view.state, hit.pos)
-                  const $pos = view.state.doc.resolve(splitPos)
+              if (hit) {
+                const splitPos = snapToWordBoundary(view.state, hit.pos)
+                const $pos = view.state.doc.resolve(splitPos)
+                const docSize = view.state.doc.content.size
+
+                if (
+                  $pos.parent.type.name === 'paragraph' &&
+                  splitPos > $pos.start() &&
+                  splitPos < $pos.end() &&
+                  canSplit(view.state.doc, splitPos) &&
+                  (!lastSplitRef.current ||
+                    lastSplitRef.current.pos !== splitPos ||
+                    lastSplitRef.current.docSize !== docSize)
+                ) {
+                  lastSplitRef.current = { pos: splitPos, docSize }
+
+                  const tr = view.state.tr.split(splitPos)
+                  tr.setMeta(layoutMetaKey, true)
+                  view.dispatch(tr)
+                  moves++
+                  didMutate = true
+                  return
+                }
+              }
+            }
+          }
+
+          // ── List split (optional) ─────────────────────────────────────────
+          if (
+            overflowEl &&
+            (overflowEl.tagName.toLowerCase() === 'ol' || overflowEl.tagName.toLowerCase() === 'ul')
+          ) {
+            const bodyBottomY = getBodyBottomY(pageDom)
+            const liElements = overflowEl.querySelectorAll(':scope > li')
+
+            let splitLiIdx = -1
+            for (let li = 0; li < liElements.length; li++) {
+              if ((liElements[li] as HTMLElement).getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                splitLiIdx = li
+                break
+              }
+            }
+
+            if (splitLiIdx > 0) {
+              try {
+                const liEl = liElements[splitLiIdx] as HTMLElement
+                const liPosInside = view.posAtDOM(liEl, 0)
+                const $li = view.state.doc.resolve(liPosInside)
+
+                const schemaNodes = view.state.schema.nodes
+                const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+                const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+                const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
+
+                let liDepth = -1
+                for (let d = $li.depth; d >= 1; d--) {
+                  if (listItemType && $li.node(d).type === listItemType) {
+                    liDepth = d
+                    break
+                  }
+                }
+
+                if (liDepth >= 1) {
+                  let listDepth = -1
+                  for (let d = liDepth - 1; d >= 1; d--) {
+                    const t = $li.node(d).type
+                    if ((orderedListType && t === orderedListType) || (bulletListType && t === bulletListType)) {
+                      listDepth = d
+                      break
+                    }
+                  }
+
+                  const splitPos = $li.before(liDepth)
                   const docSize = view.state.doc.content.size
 
                   if (
-                    $pos.parent.type.name === 'paragraph' &&
-                    splitPos > $pos.start() &&
-                    splitPos < $pos.end() &&
-                    canSplit(view.state.doc, splitPos) &&
+                    canSplit(view.state.doc, splitPos, 1) &&
                     (!lastSplitRef.current ||
                       lastSplitRef.current.pos !== splitPos ||
                       lastSplitRef.current.docSize !== docSize)
                   ) {
                     lastSplitRef.current = { pos: splitPos, docSize }
+                    const tr = view.state.tr.split(splitPos, 1)
 
-                    const tr = view.state.tr.split(splitPos)
+                    if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
+                      const originalListNode = $li.node(listDepth)
+                      const originalStart = (originalListNode.attrs?.start as number) ?? 1
+                      const nextStart = originalStart + splitLiIdx
+
+                      const mapped = tr.mapping.map(splitPos, 1)
+                      const $mapped = tr.doc.resolve(mapped)
+
+                      for (let d = $mapped.depth; d >= 1; d--) {
+                        if ($mapped.node(d).type === orderedListType) {
+                          tr.setNodeMarkup($mapped.before(d), undefined, {
+                            ...$mapped.node(d).attrs,
+                            start: nextStart,
+                          })
+                          break
+                        }
+                      }
+                    }
+
                     tr.setMeta(layoutMetaKey, true)
                     view.dispatch(tr)
                     moves++
@@ -282,119 +344,13 @@ export function usePageLayout(
                     return
                   }
                 }
-              }
-            }
-
-            // ── Try list split ───────────────────────────────────────────
-            // When a <ol>/<ul> straddles the boundary, find the <li> that
-            // crosses bodyBottomY, split the list before it, and move the
-            // second half to the next page. For <ol>, update `start` attr.
-            if (
-              overflowEl &&
-              (overflowEl.tagName.toLowerCase() === 'ol' ||
-               overflowEl.tagName.toLowerCase() === 'ul')
-            ) {
-              const bodyBottomY = getBodyBottomY(pageDom)
-              const liElements = overflowEl.querySelectorAll(':scope > li')
-
-              let splitLiIdx = -1
-              for (let li = 0; li < liElements.length; li++) {
-                if (liElements[li].getBoundingClientRect().bottom > bodyBottomY + 0.5) {
-                  splitLiIdx = li
-                  break
-                }
-              }
-
-              if (splitLiIdx > 0) {
-                try {
-                  const liEl = liElements[splitLiIdx] as HTMLElement
-                  const liPosInside = view.posAtDOM(liEl, 0)
-                  const $li = view.state.doc.resolve(liPosInside)
-
-                  const schemaNodes = view.state.schema.nodes
-                  const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
-                  const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
-                  const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
-
-                  let liDepth = -1
-                  for (let d = $li.depth; d >= 1; d--) {
-                    if (listItemType && $li.node(d).type === listItemType) {
-                      liDepth = d
-                      break
-                    }
-                  }
-
-                  if (liDepth >= 1) {
-                    // Find the list container depth above the listItem
-                    let listDepth = -1
-                    for (let d = liDepth - 1; d >= 1; d--) {
-                      const t = $li.node(d).type
-                      if (
-                        (orderedListType && t === orderedListType) ||
-                        (bulletListType && t === bulletListType)
-                      ) {
-                        listDepth = d
-                        break
-                      }
-                    }
-
-                    // If list container not found, fall through to whole-block move
-                    if (listDepth >= 1) {
-                      const splitDepth = liDepth - listDepth
-                      const splitPos = $li.before(liDepth)
-                      const docSize = view.state.doc.content.size
-
-                      if (
-                        canSplit(view.state.doc, splitPos, splitDepth) &&
-                        (!lastSplitRef.current ||
-                          lastSplitRef.current.pos !== splitPos ||
-                          lastSplitRef.current.docSize !== docSize)
-                      ) {
-                        lastSplitRef.current = { pos: splitPos, docSize }
-
-                        const tr = view.state.tr.split(splitPos, splitDepth)
-
-                        // For ordered lists, set `start` on the second list
-                        if (
-                          overflowEl.tagName.toLowerCase() === 'ol' &&
-                          orderedListType
-                        ) {
-                          const originalListNode = $li.node(listDepth)
-                          const originalStart =
-                            (originalListNode.attrs?.start as number) ?? 1
-                          const nextStart = originalStart + splitLiIdx
-
-                          const mapped = tr.mapping.map(splitPos, 1)
-                          const $mapped = tr.doc.resolve(mapped)
-
-                          for (let d = $mapped.depth; d >= 1; d--) {
-                            if ($mapped.node(d).type === orderedListType) {
-                              tr.setNodeMarkup($mapped.before(d), undefined, {
-                                ...$mapped.node(d).attrs,
-                                start: nextStart,
-                              })
-                              break
-                            }
-                          }
-                        }
-
-                        tr.setMeta(layoutMetaKey, true)
-                        view.dispatch(tr)
-                        moves++
-                        didMutate = true
-                        return
-                      }
-                    }
-                  }
-                } catch {
-                  // split attempt failed — fall through to whole-block move
-                }
+              } catch {
+                // fall through to whole-block move
               }
             }
           }
 
-          // ── Fall through: move the whole last block ──────────────────────
-          // Reset split guard since we're doing a block move, not a split
+          // ── Fall through: move whole last block ───────────────────────────
           lastSplitRef.current = null
 
           const blockToMove = pageNode.child(lastChildIdx)
@@ -404,173 +360,97 @@ export function usePageLayout(
           }
           const blockEnd = blockStart + blockToMove.nodeSize
 
-          didMutate = moveBlockToNextPage(
-            blockToMove, blockStart, blockEnd,
-            pageOffset, pageNode, pageIndex
-          )
+          didMutate = moveBlockToNextPage(blockToMove, blockStart, blockEnd, pageOffset, pageNode, pageIndex)
           if (didMutate) moves++
           pageIndex++
         })
       }
 
-      // Reset split guard after the push phase completes
       lastSplitRef.current = null
 
       // ── Phase 2: pull blocks back to fill pages ──────────────────────────
-      // After pushing, some pages may have room. Pull the first block of the
-      // next page back if it fits.
       didMutate = true
       while (didMutate && moves < MAX_MOVES) {
         didMutate = false
         const { doc } = view.state
         const pageType = doc.type.schema.nodes.page
 
-        const pageNodes: { node: ReturnType<typeof doc.child>; offset: number }[] = []
+        const pageOffsets: number[] = []
         doc.forEach((n, o) => {
-          if (n.type === pageType) pageNodes.push({ node: n, offset: o })
+          if (n.type === pageType) pageOffsets.push(o)
         })
 
-        for (let p = 0; p < pageNodes.length - 1; p++) {
-          const currPage = pageNodes[p]
-          const nextPage = pageNodes[p + 1]
+        for (let i = 0; i < pageOffsets.length - 1; i++) {
+          if (didMutate) break
 
-          // DOM elements for measurement
-          const currDom = view.nodeDOM(currPage.offset) as HTMLElement | null
-          const nextDom = view.nodeDOM(nextPage.offset) as HTMLElement | null
-          if (!currDom || !nextDom) continue
+          const pageOffset = pageOffsets[i]
+          const nextOffset = pageOffsets[i + 1]
+          const pageNode = doc.nodeAt(pageOffset)
+          const nextNode = doc.nodeAt(nextOffset)
+          if (!pageNode || !nextNode) continue
 
-          if (!canPullBlock(currDom, nextDom)) continue
+          const pageDom = view.nodeDOM(pageOffset) as HTMLElement | null
+          const nextDom = view.nodeDOM(nextOffset) as HTMLElement | null
+          if (!pageDom || !nextDom) continue
+          if (!pageDom.classList.contains('pm-page') || !nextDom.classList.contains('pm-page')) continue
 
-          // Pull the first block from next page to end of current page
-          const firstChild = nextPage.node.child(0)
-          const firstChildStart = nextPage.offset + 1
-          const firstChildEnd = firstChildStart + firstChild.nodeSize
+          if (!canPullBlock(pageDom, nextDom)) continue
+          if (nextNode.childCount === 0) continue
 
-          // Insert position: end of current page content
-          const insertPos = currPage.offset + currPage.node.nodeSize - 1
+          const firstBlock = nextNode.child(0)
+          const from = nextOffset + 1
+          const to = from + firstBlock.nodeSize
+          const insertPos = pageOffset + pageNode.nodeSize - 1
 
           const tr = view.state.tr
-          tr.delete(firstChildStart, firstChildEnd)
-          const mappedInsert = tr.mapping.map(insertPos)
-          tr.insert(mappedInsert, firstChild)
-
+          tr.delete(from, to)
+          tr.insert(tr.mapping.map(insertPos), firstBlock)
           tr.setMeta(layoutMetaKey, true)
           view.dispatch(tr)
-          moves++
+
           didMutate = true
-          break // restart scan from the beginning after mutation
+          moves++
         }
       }
 
-      // ── Phase 3: remove trailing empty pages (except the first) ────────
-      // A page is "effectively empty" if it has no children or contains
-      // only a single empty paragraph (ProseMirror's default placeholder).
-      {
-        const { doc } = view.state
-        const pageType = doc.type.schema.nodes.page
-
-        const isPageEmpty = (n: PMNode): boolean => {
-          if (n.childCount === 0) return true
-          if (
-            n.childCount === 1 &&
-            n.child(0).type.name === 'paragraph' &&
-            n.child(0).content.size === 0
-          ) return true
-          return false
-        }
-
-        const pages: { node: PMNode; offset: number }[] = []
-        doc.forEach((n, o) => {
-          if (n.type === pageType) pages.push({ node: n, offset: o })
-        })
-
-        // Walk from the end, removing trailing empties (keep at least page 0)
-        const toRemove: { offset: number; size: number }[] = []
-        for (let i = pages.length - 1; i >= 1; i--) {
-          if (isPageEmpty(pages[i].node)) {
-            toRemove.push({ offset: pages[i].offset, size: pages[i].node.nodeSize })
-          } else {
-            break // stop at first non-empty page
-          }
-        }
-
-        if (toRemove.length > 0) {
-          const tr = view.state.tr
-          // toRemove is already highest-offset-first
-          for (const { offset, size } of toRemove) {
-            tr.delete(offset, offset + size)
-          }
-          tr.setMeta(layoutMetaKey, true)
-          view.dispatch(tr)
-        }
-      }
-      // ── Update page count ─────────────────────────────────────────────
-      {
-        const { doc } = view.state
-        const pageType = doc.type.schema.nodes.page
-        let count = 0
-        doc.forEach((n) => {
-          if (n.type === pageType) count++
-        })
-        setPageCount((prev) => (prev !== count ? count : prev))
-      }
+      // Update page count
+      const { doc } = view.state
+      const pageType = doc.type.schema.nodes.page
+      let count = 0
+      doc.forEach((n) => {
+        if (n.type === pageType) count++
+      })
+      setPageCount(Math.max(1, count))
     } finally {
       isLayingOutRef.current = false
     }
   }, [editor, hfHeights])
 
-  const scheduleMeasure = useCallback(() => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current)
-    }
+  const schedule = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(measure)
   }, [measure])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
 
-    // Initial measurement after fonts are ready
-    document.fonts?.ready.then(() => {
-      requestAnimationFrame(measure)
-    })
-
-    const onUpdate = ({ transaction }: { editor: Editor; transaction: { getMeta: (key: PluginKey) => unknown } }) => {
-      // Skip layout-triggered updates to avoid infinite loops
-      if (transaction.getMeta(layoutMetaKey)) return
-      scheduleMeasure()
+    const onUpdate = ({ transaction }: { transaction: any }) => {
+      if (transaction?.getMeta?.(layoutMetaKey)) return
+      schedule()
     }
-    editor.on('update', onUpdate)
 
-    window.addEventListener('resize', scheduleMeasure)
+    editor.on('update', onUpdate as any)
+    window.addEventListener('resize', schedule)
 
-    // Watch for images loading (they change layout)
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLImageElement) {
-            node.addEventListener('load', scheduleMeasure, { once: true })
-          }
-          if (node instanceof HTMLElement) {
-            node.querySelectorAll('img').forEach((img) => {
-              if (!img.complete) {
-                img.addEventListener('load', scheduleMeasure, { once: true })
-              }
-            })
-          }
-        })
-      }
-    })
-    observer.observe(editor.view.dom, { childList: true, subtree: true })
-
-    scheduleMeasure()
+    // initial
+    schedule()
 
     return () => {
-      editor.off('update', onUpdate)
-      window.removeEventListener('resize', scheduleMeasure)
-      observer.disconnect()
+      editor.off('update', onUpdate as any)
+      window.removeEventListener('resize', schedule)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [editor, scheduleMeasure, measure])
+  }, [editor, schedule])
 
   return { pageCount }
 }
