@@ -357,13 +357,6 @@
   pointer-events: none;
 }
 
-/* Pagination spacer - injected by ProseMirror widget decoration at page breaks */
-.ProseMirror .pagination-spacer {
-  width: 100%;
-  pointer-events: none;
-  user-select: none;
-}
-
 /* Page number in footer area */
 .page-content-wrapper .page-number-indicator {
   position: absolute;
@@ -463,16 +456,31 @@
   margin: 0 auto;
 }
 
-/* V2 ProseMirror */
+/* V2 ProseMirror — transparent wrapper; pages provide the paper UI */
 .editor-v2-shell .ProseMirror {
   width: 794px;
-  padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 96px) 64px;
   background: transparent;
   outline: none;
   position: relative;
   z-index: 2;
   box-sizing: border-box;
+}
+
+/* Page node — each one renders as an A4 paper sheet */
+.editor-v2-shell .ProseMirror .pm-page {
+  width: 794px;
   min-height: 1123px;
+  padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 96px) 64px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  position: relative;
+  margin: 0 auto 24px auto;
+}
+
+/* Remove bottom margin on the last page */
+.editor-v2-shell .ProseMirror .pm-page:last-child {
+  margin-bottom: 0;
 }
 
 /* V2 Overlay */
@@ -569,4 +577,26 @@
 
 .editor-v2-hf-region:hover .hf-hint {
   opacity: 1;
+}
+
+/* ===== V2 Page-node layout: make ProseMirror a zero-padding wrapper ===== */
+.editor-v2-shell .ProseMirror {
+  padding: 0 !important;
+  min-height: auto !important;
+  background: transparent !important;
+}
+
+/* Page node owns the page padding + paper visuals */
+.editor-v2-shell .ProseMirror .pm-page {
+  box-sizing: border-box;
+  min-height: 1123px;
+  padding: var(--body-padding-top, 120px) 64px var(--body-padding-bottom, 120px) 64px;
+  background: #fff;
+  margin: 0 auto 24px auto;
+}
+
+/* Table cell paragraphs: DO NOT use display: contents (breaks ProseMirror) */
+.ProseMirror table td p,
+.ProseMirror table th p {
+  margin: 0;
 }

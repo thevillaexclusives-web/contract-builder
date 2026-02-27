@@ -4,7 +4,8 @@ import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/core'
 import type { ActiveRegion, EditorMode } from '@/types/editor'
 import { PAGE_CONFIG } from '../config/pageConfig'
-import { PagesOverlay } from './PagesOverlay'
+// PagesOverlay disabled — .pm-page nodes now provide paper sheet visuals
+// import { PagesOverlay } from './PagesOverlay'
 import { HeaderFooterEditors } from './HeaderFooterEditors'
 
 interface EditorShellProps {
@@ -59,7 +60,8 @@ export function EditorShell({
   return (
     <div className="editor-v2-container">
       <div className="editor-v2-shell" style={{ minHeight }}>
-        <PagesOverlay pageCount={pageCount} />
+        {/* PagesOverlay disabled — .pm-page nodes now provide paper sheet visuals */}
+        {/* <PagesOverlay pageCount={pageCount} /> */}
         <HeaderFooterEditors
           pageCount={pageCount}
           activeRegion={activeRegion}
