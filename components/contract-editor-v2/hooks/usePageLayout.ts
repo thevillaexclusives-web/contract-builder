@@ -6,6 +6,17 @@ import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
 import { canSplit } from 'prosemirror-transform'
 import { PAGE_CONFIG } from '../config/pageConfig'
 
+const isEmptyParagraph = (n: PMNode) =>
+  n.type.name === 'paragraph' && n.content.size === 0
+
+const isEffectivelyEmptyPage = (page: PMNode) => {
+  if (page.childCount === 0) return true
+  for (let i = 0; i < page.childCount; i++) {
+    if (!isEmptyParagraph(page.child(i))) return false
+  }
+  return true
+}
+
 /** Snap a doc position to the nearest whitespace boundary within ±30 chars. */
 function snapToWordBoundary(state: EditorState, pos: number): number {
   const { doc } = state
@@ -262,7 +273,6 @@ export function usePageLayout(
           }
 
           // ── List split (optional) ─────────────────────────────────────────
-          // ── List split (optional) ─────────────────────────────────────────
           // Only attempt to split lists when the LIST itself is the last block on the page.
           // If overflow happens earlier in the page, we first move trailing blocks (handled by the
           // whole-block move fallback) until the overflow block becomes last. This avoids thrash.
@@ -367,7 +377,7 @@ export function usePageLayout(
           // If overflow occurs in the middle of the page, first peel off trailing blocks.
           // This makes the overflowing block eventually become the last child, which
           // allows paragraph/list splitting logic to apply cleanly and prevents thrash.
-          const idxToMove = overflowIdx >= 0 && overflowIdx < lastChildIdx ? lastChildIdx : lastChildIdx
+          const idxToMove = lastChildIdx
 
           const blockToMove = pageNode.child(idxToMove)
 
@@ -431,14 +441,62 @@ export function usePageLayout(
         }
       }
 
-      // Update page count
-      const { doc } = view.state
-      const pageType = doc.type.schema.nodes.page
-      let count = 0
-      doc.forEach((n) => {
-        if (n.type === pageType) count++
-      })
-      setPageCount(Math.max(1, count))
+      // ── Remove trailing empty pages ───────────────────────────────────
+      // ====================== REPLACE START ======================
+      // (This replaces the existing "Remove trailing empty pages" block
+      //  AND the existing "Update page count" block directly after it.)
+
+      // ── Remove trailing empty pages ───────────────────────────────────
+      // Pages that contain only empty paragraphs should be removed at the end.
+      // Keep at least one page.
+      //
+      // NOTE: If we dispatch deletions, view.state.doc won't reflect them until after dispatch.
+      // We compute pageCount from `nextDocForCount` which is `tr.doc` when we delete pages.
+      let nextDocForCount: PMNode = view.state.doc
+
+      {
+        const { doc } = view.state
+        const pageType = doc.type.schema.nodes.page
+
+        const pageOffsets: number[] = []
+        doc.forEach((n, o) => {
+          if (n.type === pageType) pageOffsets.push(o)
+        })
+
+        let tr = view.state.tr
+        let removed = 0
+
+        // Remove only TRAILING empty pages (stop once a page has real content).
+        for (let i = pageOffsets.length - 1; i >= 1; i--) {
+          const off = pageOffsets[i]
+          const pageNode = doc.nodeAt(off)
+          if (!pageNode) continue
+
+          if (!isEffectivelyEmptyPage(pageNode)) break
+
+          tr = tr.delete(off, off + pageNode.nodeSize)
+          removed++
+        }
+
+        if (removed > 0) {
+          tr.setMeta(layoutMetaKey, true)
+          view.dispatch(tr)
+          nextDocForCount = tr.doc
+        }
+      }
+
+      // ── Update page count ─────────────────────────────────────────────
+      {
+        const pageType = nextDocForCount.type.schema.nodes.page
+        let count = 0
+        nextDocForCount.forEach((n) => {
+          if (n.type === pageType) count++
+        })
+        setPageCount(Math.max(1, count))
+      }
+      // ====================== REPLACE END ======================
+      // (The code after this should continue with your `} finally { ... }` etc.)
+
     } finally {
       isLayingOutRef.current = false
     }
