@@ -138,7 +138,8 @@ export function usePageLayout(
         }
         if (firstBlockHeight === 0) return false
 
-        return contentBottom + firstBlockHeight <= bodyBottomY + 0.5
+        // 2px safety buffer reduces push/pull oscillation at the boundary
+        return contentBottom + firstBlockHeight <= bodyBottomY - 2
       }
 
       // ── Helper: find the next page offset given a page index ─────────────
@@ -190,9 +191,11 @@ export function usePageLayout(
       }
 
       // ── Phase 1: push overflowing blocks forward ─────────────────────────
-      // When the overflowing block is a paragraph that straddles the page
-      // boundary, split it at the boundary line and move only the second half
-      // to the next page. Otherwise move the whole last block.
+      // When the overflowing element is the last child on the page AND is a
+      // paragraph or list that straddles the boundary, try to split it.
+      // Otherwise (or if the overflow is not the last child), move the last
+      // block to the next page. Moving trailing blocks first ensures the
+      // overflow element eventually becomes the last child for splitting.
       let moves = 0
       let didMutate = true
 
@@ -221,154 +224,47 @@ export function usePageLayout(
             return
           }
 
-          // ── Try paragraph split if the overflowing block is a <p> ────────
-          // Only attempt when the paragraph starts ABOVE the page boundary
-          // (i.e. it straddles the boundary), so splitting keeps the top part
-          // on this page rather than leaving a big gap.
-          const overflowEl = pageDom.children[overflowIdx] as HTMLElement | null
+          // ── Only attempt splits when the overflow element is the last
+          // child on the page. If there are blocks after the overflow,
+          // skip straight to moving the last block; subsequent iterations
+          // will clear trailing blocks until the overflow element is last.
+          if (overflowIdx === lastChildIdx) {
+            const overflowEl = pageDom.children[overflowIdx] as HTMLElement | null
 
-          if (
-            overflowEl &&
-            overflowEl.tagName.toLowerCase() === 'p' &&
-            overflowIdx === lastChildIdx // only split if it's the last block
-          ) {
-            const bodyBottomY = getBodyBottomY(pageDom)
-            const elRect = overflowEl.getBoundingClientRect()
-            const remaining = bodyBottomY - elRect.top
+            // ── Try paragraph split ──────────────────────────────────────
+            // Only when the paragraph starts ABOVE the page boundary
+            // (straddles it), so splitting keeps the top part on this page.
+            if (
+              overflowEl &&
+              overflowEl.tagName.toLowerCase() === 'p'
+            ) {
+              const bodyBottomY = getBodyBottomY(pageDom)
+              const elRect = overflowEl.getBoundingClientRect()
+              const remaining = bodyBottomY - elRect.top
 
-            // The paragraph starts above the boundary (remaining > 0) and
-            // extends below it — a good candidate for splitting.
-            if (remaining > 0) {
-              const hit = view.posAtCoords({
-                left: elRect.left + 5,
-                top: elRect.top + remaining - 1,
-              })
+              if (remaining > 0) {
+                const hit = view.posAtCoords({
+                  left: elRect.left + 5,
+                  top: elRect.top + remaining - 1,
+                })
 
-              if (hit) {
-                const splitPos = snapToWordBoundary(view.state, hit.pos)
-                const $pos = view.state.doc.resolve(splitPos)
-                const docSize = view.state.doc.content.size
-
-                // Verify: inside a paragraph, not at edges, splittable, not a repeat
-                if (
-                  $pos.parent.type.name === 'paragraph' &&
-                  splitPos > $pos.start() &&
-                  splitPos < $pos.end() &&
-                  canSplit(view.state.doc, splitPos) &&
-                  (!lastSplitRef.current ||
-                    lastSplitRef.current.pos !== splitPos ||
-                    lastSplitRef.current.docSize !== docSize)
-                ) {
-                  lastSplitRef.current = { pos: splitPos, docSize }
-
-                  // Split the paragraph — this creates two paragraphs in the
-                  // same page. The next iteration will detect the second one
-                  // overflowing and move it as a whole block.
-                  const tr = view.state.tr.split(splitPos)
-                  tr.setMeta(layoutMetaKey, true)
-                  view.dispatch(tr)
-                  moves++
-                  didMutate = true
-                  return
-                }
-              }
-            }
-          }
-
-          // ── Try list split if the overflowing block is a list ────────────
-          // When a <ol>/<ul> straddles the page boundary, find the <li> that
-          // crosses bodyBottomY, split the list before it, and move the second
-          // half to the next page. For <ol>, update the `start` attribute.
-          if (
-            overflowEl &&
-            (overflowEl.tagName.toLowerCase() === 'ol' ||
-             overflowEl.tagName.toLowerCase() === 'ul')
-          ) {
-            const bodyBottomY = getBodyBottomY(pageDom)
-            const liElements = overflowEl.querySelectorAll(':scope > li')
-
-            // Find the first <li> that overflows
-            let splitLiIdx = -1
-            for (let li = 0; li < liElements.length; li++) {
-              if (liElements[li].getBoundingClientRect().bottom > bodyBottomY + 0.5) {
-                splitLiIdx = li
-                break
-              }
-            }
-
-            // Only split if there's a fitting item before the overflow (splitLiIdx > 0)
-            if (splitLiIdx > 0) {
-              try {
-                const liEl = liElements[splitLiIdx] as HTMLElement
-                const liPosInside = view.posAtDOM(liEl, 0)
-                const $li = view.state.doc.resolve(liPosInside)
-
-                const schemaNodes = view.state.schema.nodes
-                const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
-                const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
-                const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
-
-                // Walk up to find listItem depth
-                let liDepth = -1
-                for (let d = $li.depth; d >= 1; d--) {
-                  if (listItemType && $li.node(d).type === listItemType) {
-                    liDepth = d
-                    break
-                  }
-                }
-
-                if (liDepth >= 1) {
-                  // Find the list container depth above the listItem
-                  let listDepth = -1
-                  for (let d = liDepth - 1; d >= 1; d--) {
-                    const t = $li.node(d).type
-                    if (
-                      (orderedListType && t === orderedListType) ||
-                      (bulletListType && t === bulletListType)
-                    ) {
-                      listDepth = d
-                      break
-                    }
-                  }
-
-                  const splitPos = $li.before(liDepth)
+                if (hit) {
+                  const splitPos = snapToWordBoundary(view.state, hit.pos)
+                  const $pos = view.state.doc.resolve(splitPos)
                   const docSize = view.state.doc.content.size
 
                   if (
-                    canSplit(view.state.doc, splitPos, 1) &&
+                    $pos.parent.type.name === 'paragraph' &&
+                    splitPos > $pos.start() &&
+                    splitPos < $pos.end() &&
+                    canSplit(view.state.doc, splitPos) &&
                     (!lastSplitRef.current ||
                       lastSplitRef.current.pos !== splitPos ||
                       lastSplitRef.current.docSize !== docSize)
                   ) {
                     lastSplitRef.current = { pos: splitPos, docSize }
 
-                    const tr = view.state.tr.split(splitPos, 1)
-
-                    // For ordered lists, set `start` on the second list
-                    if (
-                      overflowEl.tagName.toLowerCase() === 'ol' &&
-                      orderedListType &&
-                      listDepth >= 1
-                    ) {
-                      const originalListNode = $li.node(listDepth)
-                      const originalStart =
-                        (originalListNode.attrs?.start as number) ?? 1
-                      const nextStart = originalStart + splitLiIdx
-
-                      const mapped = tr.mapping.map(splitPos, 1)
-                      const $mapped = tr.doc.resolve(mapped)
-
-                      for (let d = $mapped.depth; d >= 1; d--) {
-                        if ($mapped.node(d).type === orderedListType) {
-                          tr.setNodeMarkup($mapped.before(d), undefined, {
-                            ...$mapped.node(d).attrs,
-                            start: nextStart,
-                          })
-                          break
-                        }
-                      }
-                    }
-
+                    const tr = view.state.tr.split(splitPos)
                     tr.setMeta(layoutMetaKey, true)
                     view.dispatch(tr)
                     moves++
@@ -376,8 +272,113 @@ export function usePageLayout(
                     return
                   }
                 }
-              } catch {
-                // split attempt failed — fall through to whole-block move
+              }
+            }
+
+            // ── Try list split ───────────────────────────────────────────
+            // When a <ol>/<ul> straddles the boundary, find the <li> that
+            // crosses bodyBottomY, split the list before it, and move the
+            // second half to the next page. For <ol>, update `start` attr.
+            if (
+              overflowEl &&
+              (overflowEl.tagName.toLowerCase() === 'ol' ||
+               overflowEl.tagName.toLowerCase() === 'ul')
+            ) {
+              const bodyBottomY = getBodyBottomY(pageDom)
+              const liElements = overflowEl.querySelectorAll(':scope > li')
+
+              let splitLiIdx = -1
+              for (let li = 0; li < liElements.length; li++) {
+                if (liElements[li].getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                  splitLiIdx = li
+                  break
+                }
+              }
+
+              if (splitLiIdx > 0) {
+                try {
+                  const liEl = liElements[splitLiIdx] as HTMLElement
+                  const liPosInside = view.posAtDOM(liEl, 0)
+                  const $li = view.state.doc.resolve(liPosInside)
+
+                  const schemaNodes = view.state.schema.nodes
+                  const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+                  const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+                  const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
+
+                  let liDepth = -1
+                  for (let d = $li.depth; d >= 1; d--) {
+                    if (listItemType && $li.node(d).type === listItemType) {
+                      liDepth = d
+                      break
+                    }
+                  }
+
+                  if (liDepth >= 1) {
+                    // Find the list container depth above the listItem
+                    let listDepth = -1
+                    for (let d = liDepth - 1; d >= 1; d--) {
+                      const t = $li.node(d).type
+                      if (
+                        (orderedListType && t === orderedListType) ||
+                        (bulletListType && t === bulletListType)
+                      ) {
+                        listDepth = d
+                        break
+                      }
+                    }
+
+                    // If list container not found, fall through to whole-block move
+                    if (listDepth >= 1) {
+                      const splitDepth = liDepth - listDepth
+                      const splitPos = $li.before(liDepth)
+                      const docSize = view.state.doc.content.size
+
+                      if (
+                        canSplit(view.state.doc, splitPos, splitDepth) &&
+                        (!lastSplitRef.current ||
+                          lastSplitRef.current.pos !== splitPos ||
+                          lastSplitRef.current.docSize !== docSize)
+                      ) {
+                        lastSplitRef.current = { pos: splitPos, docSize }
+
+                        const tr = view.state.tr.split(splitPos, splitDepth)
+
+                        // For ordered lists, set `start` on the second list
+                        if (
+                          overflowEl.tagName.toLowerCase() === 'ol' &&
+                          orderedListType
+                        ) {
+                          const originalListNode = $li.node(listDepth)
+                          const originalStart =
+                            (originalListNode.attrs?.start as number) ?? 1
+                          const nextStart = originalStart + splitLiIdx
+
+                          const mapped = tr.mapping.map(splitPos, 1)
+                          const $mapped = tr.doc.resolve(mapped)
+
+                          for (let d = $mapped.depth; d >= 1; d--) {
+                            if ($mapped.node(d).type === orderedListType) {
+                              tr.setNodeMarkup($mapped.before(d), undefined, {
+                                ...$mapped.node(d).attrs,
+                                start: nextStart,
+                              })
+                              break
+                            }
+                          }
+                        }
+
+                        tr.setMeta(layoutMetaKey, true)
+                        view.dispatch(tr)
+                        moves++
+                        didMutate = true
+                        return
+                      }
+                    }
+                  }
+                } catch {
+                  // split attempt failed — fall through to whole-block move
+                }
               }
             }
           }
@@ -451,25 +452,42 @@ export function usePageLayout(
         }
       }
 
-      // ── Phase 3: remove empty pages (except the first) ──────────────────
+      // ── Phase 3: remove trailing empty pages (except the first) ────────
+      // A page is "effectively empty" if it has no children or contains
+      // only a single empty paragraph (ProseMirror's default placeholder).
       {
         const { doc } = view.state
         const pageType = doc.type.schema.nodes.page
 
-        const emptyPages: { offset: number; size: number }[] = []
-        let idx = 0
+        const isPageEmpty = (n: PMNode): boolean => {
+          if (n.childCount === 0) return true
+          if (
+            n.childCount === 1 &&
+            n.child(0).type.name === 'paragraph' &&
+            n.child(0).content.size === 0
+          ) return true
+          return false
+        }
+
+        const pages: { node: PMNode; offset: number }[] = []
         doc.forEach((n, o) => {
-          if (n.type === pageType && n.childCount === 0 && idx > 0) {
-            emptyPages.push({ offset: o, size: n.nodeSize })
-          }
-          idx++
+          if (n.type === pageType) pages.push({ node: n, offset: o })
         })
 
-        if (emptyPages.length > 0) {
+        // Walk from the end, removing trailing empties (keep at least page 0)
+        const toRemove: { offset: number; size: number }[] = []
+        for (let i = pages.length - 1; i >= 1; i--) {
+          if (isPageEmpty(pages[i].node)) {
+            toRemove.push({ offset: pages[i].offset, size: pages[i].node.nodeSize })
+          } else {
+            break // stop at first non-empty page
+          }
+        }
+
+        if (toRemove.length > 0) {
           const tr = view.state.tr
-          // Delete in reverse order to keep offsets valid
-          for (let i = emptyPages.length - 1; i >= 0; i--) {
-            const { offset, size } = emptyPages[i]
+          // toRemove is already highest-offset-first
+          for (const { offset, size } of toRemove) {
             tr.delete(offset, offset + size)
           }
           tr.setMeta(layoutMetaKey, true)
