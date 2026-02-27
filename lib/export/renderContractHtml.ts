@@ -65,9 +65,7 @@ export function renderContractHtml(
   contractName: string,
   headerJson?: JSONContent,
   footerJson?: JSONContent
-): string {
-  const bodyHtml = markEmptyParagraphs(generateHTML(bodyJson, extensions))
-
+): { html: string; paginated: boolean } {
   const hasHeader = !isDocEmpty(headerJson)
   const hasFooter = !isDocEmpty(footerJson)
 
@@ -94,16 +92,16 @@ export function renderContractHtml(
   const headerFlex = 'flex: 0 0 auto;'
   const footerFlex = 'flex: 0 0 auto;'
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
+  // ── Shared HTML <head> content ──────────────────────────────────────────
+  const headMeta = `<meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(contractName)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />`
+
+  // ── Shared CSS (used by both page-node and legacy modes) ────────────────
+  const styles = `
     @page {
       size: A4;
       margin: 0;
@@ -161,8 +159,8 @@ export function renderContractHtml(
       font-size: 16px;
       line-height: 1.5;
     }
-    section.page > footer { 
-      font-size: 16px; 
+    section.page > footer {
+      font-size: 16px;
       line-height: 1.5;
     }
     /* Header/footer p inherits 16px; inline fontSize span marks override when present */
@@ -275,7 +273,6 @@ export function renderContractHtml(
     /* Remove paragraph margins inside table cells */
     td p, th p {
       margin: 0;
-      display: contents;
     }
 
     /* Blockquotes: editor uses margin: 1em 0; padding-left: 1em; border-left: 3px solid #ddd */
@@ -342,8 +339,64 @@ export function renderContractHtml(
       border-bottom: none !important;
       overflow: hidden;
       text-overflow: ellipsis;
+    }`
+
+  // ── Detect page-node format (doc -> page+ -> block+) ────────────────────
+  const isPageNodeFormat =
+    (bodyJson.content?.length ?? 0) > 0 && bodyJson.content![0].type === 'page'
+
+  if (isPageNodeFormat) {
+    // Pre-paginated: each page node becomes a <section class="page">
+    const pageNodes = bodyJson.content!
+    const totalPages = pageNodes.length
+    let pagesHtml = ''
+
+    for (let i = 0; i < totalPages; i++) {
+      const page = pageNodes[i]
+      const pageBodyHtml = markEmptyParagraphs(
+        generateHTML({ type: 'doc', content: page.content ?? [] }, extensions)
+      )
+
+      const headerBlock = hasHeader
+        ? `<header>${headerHtml}</header>`
+        : '<header></header>'
+
+      const footerBlock = hasFooter
+        ? `<footer>${footerHtml}</footer>`
+        : `<footer class="page-number-only">Page ${i + 1} of ${totalPages}</footer>`
+
+      pagesHtml += `<section class="page">
+${headerBlock}
+<main>${pageBodyHtml}</main>
+${footerBlock}
+</section>
+`
     }
-  </style>
+
+    return {
+      html: `<!doctype html>
+<html lang="en">
+<head>
+  ${headMeta}
+  <style>${styles}</style>
+</head>
+<body class="paginated">
+${pagesHtml}
+</body>
+</html>`,
+      paginated: true,
+    }
+  }
+
+  // ── Legacy format: flow div + JS pagination ─────────────────────────────
+  const bodyHtml = markEmptyParagraphs(generateHTML(bodyJson, extensions))
+
+  return {
+    html: `<!doctype html>
+<html lang="en">
+<head>
+  ${headMeta}
+  <style>${styles}</style>
 </head>
 <body>
   <!-- Header/footer templates for pagination script -->
@@ -463,7 +516,9 @@ export function renderContractHtml(
     })();
   </script>
 </body>
-</html>`
+</html>`,
+    paginated: false,
+  }
 }
 
 function escapeHtml(str: string): string {

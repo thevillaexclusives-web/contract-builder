@@ -64,10 +64,7 @@ export async function POST(
     const envelope = parseContent(rawContent)
 
     // Render TipTap JSON to full HTML document (with header/footer if present)
-    const html = renderContractHtml(envelope.body, contractName, envelope.header, envelope.footer)
-
-    console.log('🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶🌶');
-    console.log('html:', html);
+    const { html, paginated } = renderContractHtml(envelope.body, contractName, envelope.header, envelope.footer)
 
     // Launch Puppeteer
     let browser
@@ -90,11 +87,15 @@ export async function POST(
       const page = await browser.newPage()
       await page.setViewport({ width: 1200, height: 800 })
       await page.setContent(html, { waitUntil: 'networkidle2' })
-      // Wait for async pagination script to finish (fonts + double-RAF + paginate)
-      await page.waitForFunction(
-        'window.__PAGINATION_DONE__ === true && document.body.classList.contains("paginated")',
-        { timeout: 10000 }
-      )
+
+      if (!paginated) {
+        // Legacy format: wait for async JS pagination script to finish
+        await page.waitForFunction(
+          'window.__PAGINATION_DONE__ === true && document.body.classList.contains("paginated")',
+          { timeout: 10000 }
+        )
+      }
+
       await page.emulateMediaType('print')
 
       const pdf = await page.pdf({
