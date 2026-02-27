@@ -90,10 +90,6 @@ export function usePagination(
     const hH = hfHeights?.headerH ?? PAGE_CONFIG.headerHeight
     const fH = hfHeights?.footerH ?? PAGE_CONFIG.footerHeight
 
-    // Height available for body content on each page
-    const usableHeight =
-      PAGE_CONFIG.height - hH - fH - PAGE_CONFIG.paddingTop - PAGE_CONFIG.paddingBottom
-
     // Height of the spacer decoration (fills header + footer + gap + padding zones)
     const spacerHeight =
       hH + fH + PAGE_CONFIG.gap + PAGE_CONFIG.paddingTop + PAGE_CONFIG.paddingBottom
@@ -131,15 +127,25 @@ export function usePagination(
       }
     }
 
-    // ── B) Viewport-based page boundary ─────────────────────────────────
-    // Instead of accumulating block heights, compute an absolute Y boundary
-    // for each page and check `rect.bottom > pageBottomY`.  This accounts
-    // for CSS margins / padding that pure height accumulation can miss and
-    // prevents content from sliding under the footer overlay.
-    const containerRect = proseMirror.getBoundingClientRect()
-    const bodyPadTop = PAGE_CONFIG.paddingTop + hH
-    // Bottom of the usable content area on the current page (viewport Y).
-    let pageBottomY = containerRect.top + bodyPadTop + usableHeight
+    // ── Deterministic page boundary helpers ──────────────────────────────
+    // Instead of maintaining a moving pageBottomY, compute each element's
+    // page index from its absolute Y position. This avoids sequential
+    // accumulation drift and handles spacer-shifted content correctly.
+    const shell = proseMirror.closest('.editor-v2-shell') as HTMLElement | null
+    const shellTop = shell?.getBoundingClientRect().top ?? proseMirror.getBoundingClientRect().top
+    const pageStride = PAGE_CONFIG.height + PAGE_CONFIG.gap
+
+    /** Which page does a given viewport-Y coordinate fall on? */
+    const pageIndexForY = (y: number): number =>
+      Math.max(0, Math.floor((y - shellTop) / pageStride))
+
+    /** Bottom of the usable body area on the given page (viewport Y). */
+    const pageBodyBottomY = (pageIdx: number): number =>
+      shellTop + pageIdx * pageStride + PAGE_CONFIG.height - fH - PAGE_CONFIG.paddingBottom
+
+    /** Top of the usable body area on the given page (viewport Y). */
+    const pageBodyTopY = (pageIdx: number): number =>
+      shellTop + pageIdx * pageStride + PAGE_CONFIG.paddingTop + hH
 
     const breakInfos: PageBreakInfo[] = []
 
@@ -150,44 +156,46 @@ export function usePagination(
       // ── Explicit page break node ──────────────────────────────────────
       if (isPageBreak) {
         breakInfos.push({ pos: posBefore(el), spacerHeight })
-        pageBottomY += spacerHeight + usableHeight
         continue
       }
 
+      // ── Determine which page this element starts on ──────────────────
+      const pageIdx = pageIndexForY(rect.top)
+      const bottomY = pageBodyBottomY(pageIdx)
+
       // ── Block fits: rect.bottom within the current page boundary ──────
-      if (rect.bottom <= pageBottomY + 0.5) {
+      if (rect.bottom <= bottomY + 0.5) {
         continue
       }
 
       // ── Overflow detected ─────────────────────────────────────────────
       const tag = el.tagName.toLowerCase()
-      // Is there visible content above this element on the current page?
-      const pageTopY = pageBottomY - usableHeight
-      const hasContentAbove = rect.top > pageTopY + 0.5
+      const hasContentAbove = rect.top > pageBodyTopY(pageIdx) + 0.5
 
-      // ── List handling: per-item measurement with list splitting ────────
       // ── List handling: per-item measurement with list splitting ────────
       if (tag === 'ol' || tag === 'ul') {
-        const nodes = view.state.schema.nodes
+        const schemaNodes = view.state.schema.nodes
 
         // Support both Tiptap-style and PM-schema-style names
-        const listItemType = nodes.listItem ?? nodes.list_item
-        const orderedListType = nodes.orderedList ?? nodes.ordered_list
-        const bulletListType = nodes.bulletList ?? nodes.bullet_list
+        const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+        const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+        const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
 
         const liElements = el.querySelectorAll(':scope > li')
-        let brokeFallback = false
 
         for (let i = 0; i < liElements.length; i++) {
           const liEl = liElements[i] as HTMLElement
           const liRect = liEl.getBoundingClientRect()
 
-          // Li fits on current page
-          if (liRect.bottom <= pageBottomY + 0.5) continue
+          // Determine which page this list item starts on
+          const liPageIdx = pageIndexForY(liRect.top)
+          const liBottomY = pageBodyBottomY(liPageIdx)
 
-          // For list items, decide "content above" using LI position (not list rect)
-          const pageTopY = pageBottomY - usableHeight
-          const liHasContentAbove = liRect.top > pageTopY + 0.5
+          // Li fits on current page
+          if (liRect.bottom <= liBottomY + 0.5) continue
+
+          // For list items, decide "content above" using LI position
+          const liHasContentAbove = liRect.top > pageBodyTopY(liPageIdx) + 0.5
 
           // This <li> overflows — try to split the list before it.
           // Allow split if there is content above OR earlier items in the list fit (i > 0).
@@ -235,21 +243,17 @@ export function usePagination(
 
                 const tr = view.state.tr.split(splitPos, 1)
 
-                // A) For ordered lists, set `start` on the *second* list so numbering continues
+                // For ordered lists, set `start` on the *second* list so numbering continues
                 if (tag === 'ol' && orderedListType) {
                   const originalListNode = $li.node(listDepth)
                   const originalStart = (originalListNode.attrs?.start as number) ?? 1
                   const nextStart = originalStart + i
 
-                  // After split, mapped position is inside the second list area.
                   const mapped = tr.mapping.map(splitPos, 1)
                   const $mapped = tr.doc.resolve(mapped)
 
-                  // Find the orderedList at the SAME listDepth (avoid nested ordered lists)
                   for (let d = $mapped.depth; d >= 1; d--) {
                     if ($mapped.node(d).type === orderedListType) {
-                      // Prefer the closest orderedList at/near the original listDepth.
-                      // If nesting exists, the nearest match should be the second list created by the split.
                       tr.setNodeMarkup($mapped.before(d), undefined, {
                         ...$mapped.node(d).attrs,
                         start: nextStart,
@@ -269,8 +273,6 @@ export function usePagination(
 
             // Split failed — push the entire list to the next page.
             breakInfos.push({ pos: posBefore(el), spacerHeight })
-            pageBottomY += spacerHeight + usableHeight
-            brokeFallback = true
             break
           }
 
@@ -286,7 +288,7 @@ export function usePagination(
       const isParagraph = tag === 'p'
       if (isParagraph && hasContentAbove) {
         // How much of the paragraph fits on this page (viewport distance)
-        const remaining = pageBottomY - rect.top
+        const remaining = bottomY - rect.top
         if (remaining > 0) {
           const hit = view.posAtCoords({ left: rect.left + 5, top: rect.top + remaining - 1 })
 
@@ -322,7 +324,6 @@ export function usePagination(
       // ── Phase 1: push whole block to next page ──────────────────────────
       if (hasContentAbove) {
         breakInfos.push({ pos: posBefore(el), spacerHeight })
-        pageBottomY += spacerHeight + usableHeight
       }
       // else: first block on page, overflows — just continue (next pass
       // will have the spacer in DOM and can handle subsequent breaks)
