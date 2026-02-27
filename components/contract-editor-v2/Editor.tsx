@@ -19,11 +19,13 @@ import { CustomOrderedList } from './extensions/custom-ordered-list'
 import { FieldNode } from './extensions/field-node'
 import { PageBreak } from './extensions/page-break'
 import { LineHeight } from './extensions/line-height'
-import { PaginationSpacers } from './extensions/pagination-spacers'
+import { Document } from './extensions/document'
+import { Page } from './extensions/page'
 import { EditorShell } from './components/EditorShell'
 import TableBubbleMenu from './components/TableBubbleMenu'
-import { usePagination } from './hooks/usePagination'
+import { usePageLayout } from './hooks/usePageLayout'
 import { PAGE_CONFIG } from './config/pageConfig'
+import { wrapInPage } from './lib/wrapInPage'
 
 const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
   function Editor(
@@ -44,8 +46,11 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
+          document: false,
           orderedList: false,
         }),
+        Document,
+        Page,
         CustomOrderedList,
         Table.configure({
           resizable: true,
@@ -63,16 +68,8 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         FieldNode,
         PageBreak,
         LineHeight,
-        PaginationSpacers,
       ],
-      content: content || {
-        type: 'doc',
-        content: [
-          {
-            type: 'paragraph',
-          },
-        ],
-      },
+      content: wrapInPage(content),
       editable,
       onUpdate: ({ editor }) => {
         if (onChange) {
@@ -95,7 +92,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       headerH: PAGE_CONFIG.headerHeight,
       footerH: PAGE_CONFIG.footerHeight,
     })
-    const { pageCount } = usePagination(editor, hfHeights)
+    const { pageCount } = usePageLayout(editor, hfHeights)
     const prevModeRef = useRef(mode)
     const [activeRegion, setActiveRegion] = useState<ActiveRegion>('body')
     const headerEditorRef = useRef<TiptapEditor | null>(null)
@@ -200,8 +197,11 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
 
     // Update content when prop changes
     useEffect(() => {
-      if (editor && content && JSON.stringify(editor.getJSON()) !== JSON.stringify(content)) {
-        editor.commands.setContent(content)
+      if (editor && content) {
+        const migrated = wrapInPage(content)
+        if (JSON.stringify(editor.getJSON()) !== JSON.stringify(migrated)) {
+          editor.commands.setContent(migrated)
+        }
       }
     }, [content, editor])
 
