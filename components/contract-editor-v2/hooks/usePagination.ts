@@ -166,93 +166,119 @@ export function usePagination(
       const hasContentAbove = rect.top > pageTopY + 0.5
 
       // ── List handling: per-item measurement with list splitting ────────
+      // ── List handling: per-item measurement with list splitting ────────
       if (tag === 'ol' || tag === 'ul') {
-        const liElements = el.querySelectorAll(':scope > li')
+        const nodes = view.state.schema.nodes
 
+        // Support both Tiptap-style and PM-schema-style names
+        const listItemType = nodes.listItem ?? nodes.list_item
+        const orderedListType = nodes.orderedList ?? nodes.ordered_list
+        const bulletListType = nodes.bulletList ?? nodes.bullet_list
+
+        const liElements = el.querySelectorAll(':scope > li')
         let brokeFallback = false
+
         for (let i = 0; i < liElements.length; i++) {
           const liEl = liElements[i] as HTMLElement
           const liRect = liEl.getBoundingClientRect()
 
           // Li fits on current page
-          if (liRect.bottom <= pageBottomY + 0.5) {
-            continue
-          }
+          if (liRect.bottom <= pageBottomY + 0.5) continue
+
+          // For list items, decide "content above" using LI position (not list rect)
+          const pageTopY = pageBottomY - usableHeight
+          const liHasContentAbove = liRect.top > pageTopY + 0.5
 
           // This <li> overflows — try to split the list before it.
-          // Allow split when there is content above OR earlier items in
-          // the same list (i > 0) that already occupy space on the page.
-          if (hasContentAbove || i > 0) {
+          // Allow split if there is content above OR earlier items in the list fit (i > 0).
+          if (liHasContentAbove || i > 0) {
             try {
               const liPosInside = view.posAtDOM(liEl, 0)
               const $li = view.state.doc.resolve(liPosInside)
 
-              // Walk up to find the listItem ancestor depth
+              // 1) Find listItem depth
               let liDepth = -1
               for (let d = $li.depth; d >= 1; d--) {
-                if ($li.node(d).type.name === 'listItem') {
+                if (listItemType && $li.node(d).type === listItemType) {
                   liDepth = d
                   break
                 }
               }
+              if (liDepth < 1) throw new Error('No listItem ancestor found')
 
-              if (liDepth > 0) {
-                const splitPos = $li.before(liDepth)
-                const docSize = view.state.doc.content.size
-
+              // 2) Find the list container (ordered/bullet) depth just above listItem
+              let listDepth = -1
+              for (let d = liDepth - 1; d >= 1; d--) {
+                const t = $li.node(d).type
                 if (
-                  canSplit(view.state.doc, splitPos, 1) &&
-                  (!lastSplitRef.current ||
-                    lastSplitRef.current.pos !== splitPos ||
-                    lastSplitRef.current.docSize !== docSize)
+                  (orderedListType && t === orderedListType) ||
+                  (bulletListType && t === bulletListType)
                 ) {
-                  lastSplitRef.current = { pos: splitPos, docSize }
-
-                  const tr = view.state.tr.split(splitPos, 1)
-
-                  // A) For <ol>, set `start` on the new (second) list so
-                  // numbering continues across the page split.
-                  if (tag === 'ol') {
-                    const listNode = $li.node(liDepth - 1)
-                    const originalStart = (listNode.attrs?.start as number) ?? 1
-                    const nextStart = originalStart + i
-                    const mapped = tr.mapping.map(splitPos, 1)
-                    const $mapped = tr.doc.resolve(mapped)
-                    for (let d = $mapped.depth; d >= 1; d--) {
-                      if ($mapped.node(d).type.name === 'orderedList') {
-                        tr.setNodeMarkup($mapped.before(d), undefined, {
-                          ...$mapped.node(d).attrs,
-                          start: nextStart,
-                        })
-                        break
-                      }
-                    }
-                  }
-
-                  view.dispatch(tr)
-                  requestAnimationFrame(() => measure())
-                  return // stop — doc changed, rerun will handle the rest
+                  listDepth = d
+                  break
                 }
               }
+              if (listDepth < 1) throw new Error('No list container ancestor found')
+
+              // Split position: before the listItem within its list
+              const splitPos = $li.before(liDepth)
+              const docSize = view.state.doc.content.size
+
+              // Split the parent at depth=1 (i.e., split the list node at splitPos)
+              if (
+                canSplit(view.state.doc, splitPos, 1) &&
+                (!lastSplitRef.current ||
+                  lastSplitRef.current.pos !== splitPos ||
+                  lastSplitRef.current.docSize !== docSize)
+              ) {
+                lastSplitRef.current = { pos: splitPos, docSize }
+
+                const tr = view.state.tr.split(splitPos, 1)
+
+                // A) For ordered lists, set `start` on the *second* list so numbering continues
+                if (tag === 'ol' && orderedListType) {
+                  const originalListNode = $li.node(listDepth)
+                  const originalStart = (originalListNode.attrs?.start as number) ?? 1
+                  const nextStart = originalStart + i
+
+                  // After split, mapped position is inside the second list area.
+                  const mapped = tr.mapping.map(splitPos, 1)
+                  const $mapped = tr.doc.resolve(mapped)
+
+                  // Find the orderedList at the SAME listDepth (avoid nested ordered lists)
+                  for (let d = $mapped.depth; d >= 1; d--) {
+                    if ($mapped.node(d).type === orderedListType) {
+                      // Prefer the closest orderedList at/near the original listDepth.
+                      // If nesting exists, the nearest match should be the second list created by the split.
+                      tr.setNodeMarkup($mapped.before(d), undefined, {
+                        ...$mapped.node(d).attrs,
+                        start: nextStart,
+                      })
+                      break
+                    }
+                  }
+                }
+
+                view.dispatch(tr)
+                requestAnimationFrame(() => measure())
+                return // stop — doc changed, rerun will handle the rest
+              }
             } catch {
-              // posAtDOM failed — fall through to fallback
+              // split attempt failed — fall through to fallback
             }
 
-            // Split failed (e.g. first item, or canSplit rejected) —
-            // push the entire list to the next page.
+            // Split failed — push the entire list to the next page.
             breakInfos.push({ pos: posBefore(el), spacerHeight })
             pageBottomY += spacerHeight + usableHeight
             brokeFallback = true
-            break // stop iterating <li> elements
+            break
           }
 
-          // First item on a fresh page and no content above — just overflow
+          // First item on a fresh page and no content above — let it overflow for now
           break
         }
 
-        if (!brokeFallback) {
-          // All items processed; no break needed within this list
-        }
+        // continue to next top-level block
         continue
       }
 
