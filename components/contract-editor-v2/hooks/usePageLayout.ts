@@ -244,7 +244,7 @@ export function usePageLayout(
             let offset = pageOffset + 1
             for (let i = 0; i < pageNode.childCount; i++) {
               const child = pageNode.child(i)
-              if (child.type === orderedListType) {
+              if (child.type === orderedListType && !child.attrs?.continuation) {
                 const style = (child.attrs?.listStyleType as string) || 'decimal'
                 if (!olsByStyle.has(style)) olsByStyle.set(style, [])
                 olsByStyle.get(style)!.push({ pos: offset, node: child })
@@ -562,9 +562,12 @@ export function usePageLayout(
                 }
 
                 // ── Strategy 2: Split at a block child boundary inside the LI ──
-                // This handles the case where sub-items are paragraphs (not nested
-                // <li> elements).  We find the first direct block child whose bottom
-                // overflows and split the LI before it.
+                // Finds the first direct child of the LI whose bottom overflows.
+                // If canSplit works (child is a paragraph), uses tr.split.
+                // If canSplit fails (child is a list — LI schema requires paragraph
+                // first), falls through to Strategy 3 which manually constructs the
+                // split by extracting overflowing items from the inner list and
+                // creating a second outer LI.
                 if (!nestedSplitDone) {
                   const liChildren = firstLiEl.children
                   let overflowChildEl: HTMLElement | null = null
@@ -584,8 +587,6 @@ export function usePageLayout(
                     'overflowChildTag=', overflowChildEl?.tagName)
 
                   if (overflowChildEl && overflowChildIdx > 0) {
-                    // At least one block child fits before the overflowing one.
-                    // Split the LI before this child → creates two LIs in the OL.
                     try {
                       const childPos = view.posAtDOM(overflowChildEl, 0)
                       const $child = view.state.doc.resolve(childPos)
@@ -600,7 +601,6 @@ export function usePageLayout(
                       const schemaNodes = view.state.schema.nodes
                       const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
 
-                      // Find the listItem depth that wraps this child
                       let liDepth = -1
                       for (let d = $child.depth; d >= 1; d--) {
                         if (listItemType && $child.node(d).type === listItemType) {
@@ -609,16 +609,11 @@ export function usePageLayout(
                         }
                       }
 
-                      console.log('[layout] NESTED-SPLIT: strategy2 liDepth=', liDepth)
-
                       if (liDepth >= 1) {
-                        // Find the block node at liDepth+1 that contains the overflow child
                         const blockDepth = liDepth + 1
                         if (blockDepth <= $child.depth) {
                           const splitPos = $child.before(blockDepth)
                           const docSize = view.state.doc.content.size
-
-                          // splitDepth=1 splits the LI into two LIs
                           const canDoSplit = canSplit(view.state.doc, splitPos, 1)
                           const lastSplitBlocking = lastSplitRef.current &&
                             lastSplitRef.current.pos === splitPos &&
@@ -627,23 +622,118 @@ export function usePageLayout(
                           console.log('[layout] NESTED-SPLIT: strategy2 splitPos=', splitPos,
                             'canSplit=', canDoSplit, 'lastSplitBlocking=', lastSplitBlocking)
 
-                          if (
-                            canDoSplit &&
-                            !lastSplitBlocking
-                          ) {
+                          if (canDoSplit && !lastSplitBlocking) {
                             lastSplitRef.current = { pos: splitPos, docSize }
                             const tr = view.state.tr.split(splitPos, 1)
                             tr.setMeta(layoutMetaKey, true)
-                            console.log('[layout] NESTED-SPLIT: strategy2 DISPATCHING split at block child!')
+                            console.log('[layout] NESTED-SPLIT: strategy2 DISPATCHING split!')
                             view.dispatch(tr)
                             moves++
                             didMutate = true
                             nestedSplitDone = true
                           }
+
+                          // ── Strategy 3: manual split + move when canSplit fails ──
+                          // canSplit returns false because ListItem's content spec
+                          // is "paragraph block*" — a LI must start with a <p>.
+                          // When the overflowing child is an inner OL/UL, we:
+                          //   1. Find which inner <li> overflows
+                          //   2. Delete the overflowing items from the inner OL
+                          //   3. Create a standalone continuation OL with the tail
+                          //   4. Move it directly to the next page
+                          // This avoids creating an artificial second outer LI which
+                          // would get wrong numbering (e.g. XVIII instead of XVII).
+                          if (!nestedSplitDone && !canDoSplit) {
+                            const overflowChildTag = overflowChildEl.tagName.toLowerCase()
+
+                            if (overflowChildTag === 'ol' || overflowChildTag === 'ul') {
+                              const innerLiEls = overflowChildEl.querySelectorAll(':scope > li')
+                              let innerOverflowIdx = -1
+
+                              for (let n = 0; n < innerLiEls.length; n++) {
+                                if ((innerLiEls[n] as HTMLElement).getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                                  innerOverflowIdx = n
+                                  break
+                                }
+                              }
+
+                              console.log('[layout] NESTED-SPLIT: strategy3 innerLiEls=', innerLiEls.length,
+                                'innerOverflowIdx=', innerOverflowIdx)
+
+                              if (innerOverflowIdx > 0) {
+                                const innerOlNode = $child.node($child.depth)
+                                const innerOlPos = $child.before($child.depth)
+
+                                // Collect overflowing LI nodes
+                                const tailLis: PMNode[] = []
+                                for (let i = innerOverflowIdx; i < innerOlNode.childCount; i++) {
+                                  tailLis.push(innerOlNode.child(i))
+                                }
+
+                                // Standalone continuation OL (same style, start offset, marked as continuation)
+                                const innerStart = (innerOlNode.attrs?.start as number) ?? 1
+                                const continuationOl = innerOlNode.type.create(
+                                  { ...innerOlNode.attrs, start: innerStart + innerOverflowIdx, continuation: true },
+                                  tailLis
+                                )
+
+                                // Delete range: overflowing inner LIs
+                                let deleteFrom = innerOlPos + 1
+                                for (let i = 0; i < innerOverflowIdx; i++) {
+                                  deleteFrom += innerOlNode.child(i).nodeSize
+                                }
+                                const deleteTo = innerOlPos + innerOlNode.nodeSize - 1
+
+                                console.log('[layout] NESTED-SPLIT: strategy3 innerOlPos=', innerOlPos,
+                                  'deleteFrom=', deleteFrom, 'deleteTo=', deleteTo,
+                                  'tailLis=', tailLis.length,
+                                  'newStart=', innerStart + innerOverflowIdx)
+
+                                const tr = view.state.tr
+
+                                // Step 1: Delete the overflowing LIs from the inner OL
+                                tr.delete(deleteFrom, deleteTo)
+
+                                // Step 2: Move the continuation OL directly to the next page
+                                const pt = tr.doc.type.schema.nodes.page
+                                let currentPageEnd = -1
+                                let nextPagePos = -1
+                                let scanIdx = 0
+                                tr.doc.forEach((n, o) => {
+                                  if (n.type !== pt) return
+                                  if (scanIdx === pageIndex) {
+                                    currentPageEnd = o + n.nodeSize
+                                  } else if (scanIdx === pageIndex + 1) {
+                                    nextPagePos = o
+                                  }
+                                  scanIdx++
+                                })
+
+                                if (nextPagePos >= 0) {
+                                  console.log('[layout] NESTED-SPLIT: strategy3 inserting into next page at', nextPagePos + 1)
+                                  tr.insert(nextPagePos + 1, continuationOl)
+                                } else {
+                                  console.log('[layout] NESTED-SPLIT: strategy3 creating new page at', currentPageEnd)
+                                  const newPage = pt.create(null, continuationOl)
+                                  tr.insert(currentPageEnd, newPage)
+                                }
+
+                                tr.setMeta(layoutMetaKey, true)
+                                console.log('[layout] NESTED-SPLIT: strategy3 DISPATCHING!')
+                                view.dispatch(tr)
+                                moves++
+                                didMutate = true
+                                nestedSplitDone = true
+                                overflowedPagesRef.current.add(pageIndex)
+                              } else if (innerOverflowIdx === 0) {
+                                console.log('[layout] NESTED-SPLIT: strategy3 first inner li overflows, cannot split')
+                              }
+                            }
+                          }
                         }
                       }
                     } catch (e) {
-                      console.log('[layout] NESTED-SPLIT: strategy2 error:', e)
+                      console.log('[layout] NESTED-SPLIT: strategy2/3 error:', e)
                     }
                   }
                 }

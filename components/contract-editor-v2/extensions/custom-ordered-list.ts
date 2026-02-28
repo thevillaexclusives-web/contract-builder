@@ -31,6 +31,17 @@ export const CustomOrderedList = OrderedList.extend({
           }
         },
       },
+      continuation: {
+        default: false,
+        parseHTML: (element) => element.hasAttribute('data-continuation'),
+        renderHTML: (attributes) => {
+          if (!attributes.continuation) return {}
+          return {
+            'data-continuation': 'true',
+            style: 'margin-left: 40px;',
+          }
+        },
+      },
     }
   },
 
