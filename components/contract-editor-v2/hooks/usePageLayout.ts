@@ -436,10 +436,18 @@ export function usePageLayout(
           // If the last block on the page is a list (ol/ul) and ANY list item
           // overflows bodyBottom, split the list before that item and move the
           // tail to the next page — all in one transaction.
-          if (
-            overflowEl &&
-            overflowIdx === lastChildIdx &&
+          const isOverflowList = overflowEl &&
             (overflowEl.tagName.toLowerCase() === 'ol' || overflowEl.tagName.toLowerCase() === 'ul')
+
+          console.log('[layout] LIST-GATE: isOverflowList=', isOverflowList,
+            'overflowIdx=', overflowIdx, 'lastChildIdx=', lastChildIdx,
+            'overflowIdx===lastChildIdx=', overflowIdx === lastChildIdx,
+            'overflowTag=', overflowEl?.tagName,
+            'lastChildTag=', (pageDom.children[lastChildIdx] as HTMLElement)?.tagName)
+
+          if (
+            isOverflowList &&
+            overflowIdx === lastChildIdx
           ) {
             const bodyBottomY = getBodyBottomY(pageDom)
             const liElements = overflowEl.querySelectorAll(':scope > li')
@@ -460,92 +468,191 @@ export function usePageLayout(
 
             if (overflowLiIdx === 0) {
               // First list item overflows. Check if part of it is visible —
-              // if so, try to split inside it at a nested list boundary.
+              // if so, try to split inside it at a nested list or block boundary.
               const firstLiEl = liElements[0] as HTMLElement
               const firstLiRect = firstLiEl.getBoundingClientRect()
 
-              if (firstLiRect.top < bodyBottomY - 20) {
-                // Part of the li is visible. Look for nested <li> that overflows.
-                const nestedLis = firstLiEl.querySelectorAll('li')
-                let overflowNestedEl: HTMLElement | null = null
-                let overflowNestedIdx = -1
+              console.log('[layout] NESTED-SPLIT: overflowLiIdx=0. firstLiRect.top=', firstLiRect.top,
+                'bodyBottomY=', bodyBottomY, 'gap=', bodyBottomY - firstLiRect.top,
+                'threshold(20)=', firstLiRect.top < bodyBottomY - 20)
 
-                for (let n = 0; n < nestedLis.length; n++) {
-                  const nel = nestedLis[n] as HTMLElement
-                  if (nel.getBoundingClientRect().bottom > bodyBottomY + 0.5) {
-                    overflowNestedEl = nel
-                    overflowNestedIdx = n
-                    break
+              // DEBUG: log the DOM structure inside the first LI
+              console.log('[layout] NESTED-SPLIT: firstLi children:', Array.from(firstLiEl.children).map(c => ({
+                tag: (c as HTMLElement).tagName,
+                text: (c as HTMLElement).textContent?.slice(0, 60) || '[empty]',
+                bottom: (c as HTMLElement).getBoundingClientRect().bottom,
+              })))
+
+              if (firstLiRect.top < bodyBottomY - 20) {
+                let nestedSplitDone = false
+
+                // ── Strategy 1: Split at a nested <li> boundary ──────────────
+                const nestedLis = firstLiEl.querySelectorAll('li')
+
+                console.log('[layout] NESTED-SPLIT: strategy1 nestedLis.length=', nestedLis.length)
+
+                if (nestedLis.length > 0) {
+                  let overflowNestedEl: HTMLElement | null = null
+                  let overflowNestedIdx = -1
+
+                  for (let n = 0; n < nestedLis.length; n++) {
+                    const nel = nestedLis[n] as HTMLElement
+                    if (nel.getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                      overflowNestedEl = nel
+                      overflowNestedIdx = n
+                      break
+                    }
+                  }
+
+                  if (overflowNestedEl && overflowNestedIdx > 0) {
+                    try {
+                      const schemaNodes = view.state.schema.nodes
+                      const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+                      const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+                      const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
+
+                      const nestedLiPos = view.posAtDOM(overflowNestedEl, 0)
+                      const $nested = view.state.doc.resolve(nestedLiPos)
+
+                      let outerOlDepth = -1
+                      for (let d = $nested.depth; d >= 1; d--) {
+                        const nt = $nested.node(d).type
+                        if ((orderedListType && nt === orderedListType) || (bulletListType && nt === bulletListType)) {
+                          outerOlDepth = d
+                        }
+                      }
+
+                      if (outerOlDepth >= 1) {
+                        const outerLiDepth = outerOlDepth + 1
+                        let nestedLiDepth = -1
+                        for (let d = $nested.depth; d > outerLiDepth; d--) {
+                          if (listItemType && $nested.node(d).type === listItemType) {
+                            nestedLiDepth = d
+                            break
+                          }
+                        }
+
+                        if (nestedLiDepth >= 1) {
+                          const splitPos = $nested.before(nestedLiDepth)
+                          const splitDepth = nestedLiDepth - outerLiDepth
+                          const docSize = view.state.doc.content.size
+
+                          if (
+                            splitDepth > 0 &&
+                            canSplit(view.state.doc, splitPos, splitDepth) &&
+                            (!lastSplitRef.current ||
+                              lastSplitRef.current.pos !== splitPos ||
+                              lastSplitRef.current.docSize !== docSize)
+                          ) {
+                            lastSplitRef.current = { pos: splitPos, docSize }
+                            const tr = view.state.tr.split(splitPos, splitDepth)
+                            tr.setMeta(layoutMetaKey, true)
+                            console.log('[layout] NESTED-SPLIT: strategy1 DISPATCHING split at nested li!')
+                            view.dispatch(tr)
+                            moves++
+                            didMutate = true
+                            nestedSplitDone = true
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      console.log('[layout] NESTED-SPLIT: strategy1 error:', e)
+                    }
                   }
                 }
 
-                console.log('[layout] LIST: first li partially visible. nestedLis=', nestedLis.length,
-                  'overflowNestedIdx=', overflowNestedIdx)
+                // ── Strategy 2: Split at a block child boundary inside the LI ──
+                // This handles the case where sub-items are paragraphs (not nested
+                // <li> elements).  We find the first direct block child whose bottom
+                // overflows and split the LI before it.
+                if (!nestedSplitDone) {
+                  const liChildren = firstLiEl.children
+                  let overflowChildEl: HTMLElement | null = null
+                  let overflowChildIdx = -1
 
-                if (overflowNestedEl && overflowNestedIdx > 0) {
-                  // There's a nested li that overflows and at least one before it fits.
-                  // Split before it, opening up to the outer listItem level.
-                  try {
-                    const schemaNodes = view.state.schema.nodes
-                    const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
-
-                    const nestedLiPos = view.posAtDOM(overflowNestedEl, 0)
-                    const $nested = view.state.doc.resolve(nestedLiPos)
-
-                    // Find the outermost OL depth (direct child of page)
-                    let outerOlDepth = -1
-                    const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
-                    const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
-                    for (let d = $nested.depth; d >= 1; d--) {
-                      const nt = $nested.node(d).type
-                      if ((orderedListType && nt === orderedListType) || (bulletListType && nt === bulletListType)) {
-                        outerOlDepth = d
-                      }
+                  for (let c = 0; c < liChildren.length; c++) {
+                    const child = liChildren[c] as HTMLElement
+                    if (child.getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                      overflowChildEl = child
+                      overflowChildIdx = c
+                      break
                     }
+                  }
 
-                    if (outerOlDepth >= 1) {
-                      const outerLiDepth = outerOlDepth + 1
+                  console.log('[layout] NESTED-SPLIT: strategy2 overflowChildIdx=', overflowChildIdx,
+                    'totalChildren=', liChildren.length,
+                    'overflowChildTag=', overflowChildEl?.tagName)
 
-                      // Find the nested listItem depth
-                      let nestedLiDepth = -1
-                      for (let d = $nested.depth; d > outerLiDepth; d--) {
-                        if (listItemType && $nested.node(d).type === listItemType) {
-                          nestedLiDepth = d
+                  if (overflowChildEl && overflowChildIdx > 0) {
+                    // At least one block child fits before the overflowing one.
+                    // Split the LI before this child → creates two LIs in the OL.
+                    try {
+                      const childPos = view.posAtDOM(overflowChildEl, 0)
+                      const $child = view.state.doc.resolve(childPos)
+
+                      console.log('[layout] NESTED-SPLIT: strategy2 posAtDOM=', childPos,
+                        '$child.depth=', $child.depth,
+                        'ancestry:', Array.from({ length: $child.depth + 1 }, (_, i) => ({
+                          d: i,
+                          type: $child.node(i).type.name,
+                        })))
+
+                      const schemaNodes = view.state.schema.nodes
+                      const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+
+                      // Find the listItem depth that wraps this child
+                      let liDepth = -1
+                      for (let d = $child.depth; d >= 1; d--) {
+                        if (listItemType && $child.node(d).type === listItemType) {
+                          liDepth = d
                           break
                         }
                       }
 
-                      if (nestedLiDepth >= 1) {
-                        const splitPos = $nested.before(nestedLiDepth)
-                        const splitDepth = nestedLiDepth - outerLiDepth
-                        const docSize = view.state.doc.content.size
+                      console.log('[layout] NESTED-SPLIT: strategy2 liDepth=', liDepth)
 
-                        console.log('[layout] LIST: splitting inside first li. outerOlDepth=', outerOlDepth,
-                          'outerLiDepth=', outerLiDepth, 'nestedLiDepth=', nestedLiDepth,
-                          'splitPos=', splitPos, 'splitDepth=', splitDepth)
+                      if (liDepth >= 1) {
+                        // Find the block node at liDepth+1 that contains the overflow child
+                        const blockDepth = liDepth + 1
+                        if (blockDepth <= $child.depth) {
+                          const splitPos = $child.before(blockDepth)
+                          const docSize = view.state.doc.content.size
 
-                        if (
-                          splitDepth > 0 &&
-                          canSplit(view.state.doc, splitPos, splitDepth) &&
-                          (!lastSplitRef.current ||
-                            lastSplitRef.current.pos !== splitPos ||
-                            lastSplitRef.current.docSize !== docSize)
-                        ) {
-                          lastSplitRef.current = { pos: splitPos, docSize }
-                          const tr = view.state.tr.split(splitPos, splitDepth)
-                          tr.setMeta(layoutMetaKey, true)
-                          view.dispatch(tr)
-                          moves++
-                          didMutate = true
-                          return
+                          // splitDepth=1 splits the LI into two LIs
+                          const canDoSplit = canSplit(view.state.doc, splitPos, 1)
+                          const lastSplitBlocking = lastSplitRef.current &&
+                            lastSplitRef.current.pos === splitPos &&
+                            lastSplitRef.current.docSize === docSize
+
+                          console.log('[layout] NESTED-SPLIT: strategy2 splitPos=', splitPos,
+                            'canSplit=', canDoSplit, 'lastSplitBlocking=', lastSplitBlocking)
+
+                          if (
+                            canDoSplit &&
+                            !lastSplitBlocking
+                          ) {
+                            lastSplitRef.current = { pos: splitPos, docSize }
+                            const tr = view.state.tr.split(splitPos, 1)
+                            tr.setMeta(layoutMetaKey, true)
+                            console.log('[layout] NESTED-SPLIT: strategy2 DISPATCHING split at block child!')
+                            view.dispatch(tr)
+                            moves++
+                            didMutate = true
+                            nestedSplitDone = true
+                          }
                         }
                       }
+                    } catch (e) {
+                      console.log('[layout] NESTED-SPLIT: strategy2 error:', e)
                     }
-                  } catch (e) {
-                    console.log('[layout] LIST: nested split error:', e)
-                    // fall through
                   }
                 }
+
+                if (nestedSplitDone) {
+                  return
+                }
+              } else {
+                console.log('[layout] NESTED-SPLIT: first li NOT partially visible (top too close to bodyBottom)')
               }
 
               console.log('[layout] LIST: first li overflows, falling through to whole-block move')
