@@ -243,11 +243,71 @@ export function usePageLayout(
           }
 
           if (pageNode.childCount <= 1 && overflowIdx === 0) {
-            pageIndex++
-            return
+            // Allow lists through — they can be split even as the sole block
+            const tag0 = (pageDom.children[0] as HTMLElement | null)?.tagName?.toLowerCase()
+            if (tag0 !== 'ol' && tag0 !== 'ul') {
+              pageIndex++
+              return
+            }
           }
 
           const overflowEl = pageDom.children[overflowIdx] as HTMLElement | null
+
+          // DEBUG: overflow diagnostics
+          console.log('[layout] page', pageIndex, 'overflowIdx', overflowIdx, 'lastChildIdx', lastChildIdx,
+            'overflowTag', overflowEl?.tagName,
+            'children:', Array.from(pageDom.children).map(c => (c as HTMLElement).tagName))
+
+          // ── Delete trailing empty P after a list ────────────────────────
+          // When the user presses Enter at the end of a list, TipTap may
+          // create a trailing empty <p> after the list.  If that <p> is what
+          // overflows, the list handler never fires (it checks for OL/UL).
+          // Delete the empty <p> so the next layout tick sees the list as the
+          // overflowing block and paginates it properly.
+          if (overflowEl && overflowEl.tagName.toLowerCase() === 'p') {
+            const isEmptyP = (overflowEl.textContent || '').replace(/\u00a0/g, '').trim().length === 0
+            const prevSib = overflowEl.previousElementSibling as HTMLElement | null
+            const prevTag = prevSib?.tagName?.toLowerCase()
+
+            console.log('[layout] trailing-P check:', { isEmptyP, prevTag, overflowIdx, lastChildIdx,
+              textContent: JSON.stringify((overflowEl.textContent || '').slice(0, 50)) })
+
+            if (isEmptyP && prevSib && (prevTag === 'ol' || prevTag === 'ul')) {
+              try {
+                const pPos = view.posAtDOM(overflowEl, 0)
+                const $p = view.state.doc.resolve(pPos)
+
+                console.log('[layout] trailing-P posAtDOM=', pPos, '$p.depth=', $p.depth,
+                  'nodes:', Array.from({ length: $p.depth + 1 }, (_, i) => $p.node(i).type.name))
+
+                // Find the paragraph node depth (direct child of page)
+                let pDepth = -1
+                for (let d = $p.depth; d >= 1; d--) {
+                  if ($p.node(d).type.name === 'paragraph') {
+                    pDepth = d
+                    break
+                  }
+                }
+
+                console.log('[layout] trailing-P pDepth=', pDepth)
+
+                if (pDepth >= 1) {
+                  const from = $p.before(pDepth)
+                  const to = from + $p.node(pDepth).nodeSize
+                  console.log('[layout] DELETING trailing-P from=', from, 'to=', to)
+                  const tr = view.state.tr.delete(from, to)
+                  tr.setMeta(layoutMetaKey, true)
+                  view.dispatch(tr)
+                  moves++
+                  didMutate = true
+                  return
+                }
+              } catch (e) {
+                console.log('[layout] trailing-P error:', e)
+                // fall through
+              }
+            }
+          }
 
           // ── Paragraph split (only if last block) ─────────────────────────
           if (
@@ -313,9 +373,16 @@ export function usePageLayout(
               }
             }
 
+            console.log('[layout] LIST handler entered. tag=', overflowEl.tagName,
+              'liCount=', liElements.length, 'overflowLiIdx=', overflowLiIdx,
+              'bodyBottomY=', bodyBottomY,
+              'liBots=', Array.from(liElements).map((li, i) => ({ i, bot: (li as HTMLElement).getBoundingClientRect().bottom })))
+
             if (overflowLiIdx === 0) {
+              console.log('[layout] LIST: first li overflows, falling through to whole-block move')
               // First list item already overflows — fall through to whole-block move
             } else if (overflowLiIdx > 0) {
+              console.log('[layout] LIST: splitting before li', overflowLiIdx, 'and moving tail')
               // Split list before the overflowing <li> and move tail to next page
               try {
                 const liEl = liElements[overflowLiIdx] as HTMLElement
@@ -473,8 +540,21 @@ export function usePageLayout(
             }
           }
 
+          // If the list is the sole block and couldn't be split (overflowLiIdx was 0
+          // or split failed), don't fall through to whole-block move — that would
+          // move the same list to a new page where it overflows again → infinite loop.
+          if (pageNode.childCount <= 1 && overflowIdx === 0) {
+            console.log('[layout] single-block list could not be split, skipping page', pageIndex)
+            pageIndex++
+            return
+          }
+
           // ── Fall through: move blocks to next page (guarantee progress) ─────
           lastSplitRef.current = null
+
+          console.log('[layout] FALLBACK whole-block move. Moving child', lastChildIdx,
+            'type=', pageNode.child(lastChildIdx).type.name,
+            'overflowIdx=', overflowIdx, 'overflowTag=', overflowEl?.tagName)
 
           // If overflow occurs in the middle of the page, first peel off trailing blocks.
           // This makes the overflowing block eventually become the last child, which
