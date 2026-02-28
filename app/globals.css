@@ -595,6 +595,37 @@
   overflow: hidden;
 }
 
+/* Continuation OL: layout-generated wrapper that preserves parent list nesting
+   across page breaks.  The first LI is a structural wrapper (empty P + inner OL)
+   whose marker must be hidden.  Subsequent LIs (created when the user lifts out
+   of the nested list) show normal markers via the stored data-list-style. */
+.ProseMirror ol[data-continuation] {
+  margin-top: 0;
+}
+.ProseMirror ol[data-continuation] > li:first-child > p:first-child {
+  margin: 0;
+  padding: 0;
+  height: 0;
+  overflow: hidden;
+  line-height: 0;
+}
+/* Restore correct list-style-type for non-first LIs (lifted items) */
+.ProseMirror ol[data-continuation][data-list-style="upper-roman"] > li:not(:first-child) {
+  list-style-type: upper-roman;
+}
+.ProseMirror ol[data-continuation][data-list-style="lower-roman"] > li:not(:first-child) {
+  list-style-type: lower-roman;
+}
+.ProseMirror ol[data-continuation][data-list-style="upper-alpha"] > li:not(:first-child) {
+  list-style-type: upper-alpha;
+}
+.ProseMirror ol[data-continuation][data-list-style="lower-alpha"] > li:not(:first-child) {
+  list-style-type: lower-alpha;
+}
+.ProseMirror ol[data-continuation][data-list-style="decimal"] > li:not(:first-child) {
+  list-style-type: decimal;
+}
+
 /* Table cell paragraphs: DO NOT use display: contents (breaks ProseMirror) */
 .ProseMirror table td p,
 .ProseMirror table th p {

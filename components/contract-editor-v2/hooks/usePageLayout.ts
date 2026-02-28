@@ -639,10 +639,13 @@ export function usePageLayout(
                           // When the overflowing child is an inner OL/UL, we:
                           //   1. Find which inner <li> overflows
                           //   2. Delete the overflowing items from the inner OL
-                          //   3. Create a standalone continuation OL with the tail
-                          //   4. Move it directly to the next page
-                          // This avoids creating an artificial second outer LI which
-                          // would get wrong numbering (e.g. XVIII instead of XVII).
+                          //   3. Wrap the tail in a proper nested structure:
+                          //      outerOL[continuation] > LI > [empty P, innerOL]
+                          //   4. Move the wrapper to the next page
+                          // The wrapper preserves the parent list hierarchy so
+                          // TipTap's "lift on empty Enter" still works (the user
+                          // can press Enter on an empty sub-item to create the
+                          // next main section, e.g. XVIII).
                           if (!nestedSplitDone && !canDoSplit) {
                             const overflowChildTag = overflowChildEl.tagName.toLowerCase()
 
@@ -670,11 +673,26 @@ export function usePageLayout(
                                   tailLis.push(innerOlNode.child(i))
                                 }
 
-                                // Standalone continuation OL (same style, start offset, marked as continuation)
+                                // Create inner continuation OL (same style, correct start, NO continuation flag)
                                 const innerStart = (innerOlNode.attrs?.start as number) ?? 1
-                                const continuationOl = innerOlNode.type.create(
-                                  { ...innerOlNode.attrs, start: innerStart + innerOverflowIdx, continuation: true },
+                                const innerContinuationOl = innerOlNode.type.create(
+                                  { ...innerOlNode.attrs, start: innerStart + innerOverflowIdx },
                                   tailLis
+                                )
+
+                                // Get outer OL info to create the wrapper structure
+                                const outerOlDepth = liDepth - 1
+                                const outerOlNode = $child.node(outerOlDepth)
+                                const paragraphType = view.state.schema.nodes.paragraph
+
+                                // Build wrapper: outerOL[continuation] > LI > [empty P, inner OL]
+                                // The empty P is required by ListItem's schema ("paragraph block*").
+                                // CSS collapses it to zero height so it's invisible.
+                                const emptyP = paragraphType.create()
+                                const wrapperLi = listItemType!.create(null, [emptyP, innerContinuationOl])
+                                const wrapperOl = outerOlNode.type.create(
+                                  { ...outerOlNode.attrs, continuation: true },
+                                  [wrapperLi]
                                 )
 
                                 // Delete range: overflowing inner LIs
@@ -687,14 +705,16 @@ export function usePageLayout(
                                 console.log('[layout] NESTED-SPLIT: strategy3 innerOlPos=', innerOlPos,
                                   'deleteFrom=', deleteFrom, 'deleteTo=', deleteTo,
                                   'tailLis=', tailLis.length,
-                                  'newStart=', innerStart + innerOverflowIdx)
+                                  'newStart=', innerStart + innerOverflowIdx,
+                                  'outerOlStart=', outerOlNode.attrs?.start,
+                                  'outerOlStyle=', outerOlNode.attrs?.listStyleType)
 
                                 const tr = view.state.tr
 
                                 // Step 1: Delete the overflowing LIs from the inner OL
                                 tr.delete(deleteFrom, deleteTo)
 
-                                // Step 2: Move the continuation OL directly to the next page
+                                // Step 2: Move the wrapper OL to the next page
                                 const pt = tr.doc.type.schema.nodes.page
                                 let currentPageEnd = -1
                                 let nextPagePos = -1
@@ -710,11 +730,11 @@ export function usePageLayout(
                                 })
 
                                 if (nextPagePos >= 0) {
-                                  console.log('[layout] NESTED-SPLIT: strategy3 inserting into next page at', nextPagePos + 1)
-                                  tr.insert(nextPagePos + 1, continuationOl)
+                                  console.log('[layout] NESTED-SPLIT: strategy3 inserting wrapper into next page at', nextPagePos + 1)
+                                  tr.insert(nextPagePos + 1, wrapperOl)
                                 } else {
-                                  console.log('[layout] NESTED-SPLIT: strategy3 creating new page at', currentPageEnd)
-                                  const newPage = pt.create(null, continuationOl)
+                                  console.log('[layout] NESTED-SPLIT: strategy3 creating new page with wrapper at', currentPageEnd)
+                                  const newPage = pt.create(null, wrapperOl)
                                   tr.insert(currentPageEnd, newPage)
                                 }
 

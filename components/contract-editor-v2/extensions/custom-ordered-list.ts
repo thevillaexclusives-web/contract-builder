@@ -38,7 +38,6 @@ export const CustomOrderedList = OrderedList.extend({
           if (!attributes.continuation) return {}
           return {
             'data-continuation': 'true',
-            style: 'margin-left: 40px;',
           }
         },
       },
@@ -55,13 +54,20 @@ export const CustomOrderedList = OrderedList.extend({
     // Get listStyleType from node attributes (the source of truth)
     // node.attrs contains the actual stored attributes
     const listStyleType = node?.attrs?.listStyleType || 'decimal'
-    
+    const isContinuation = node?.attrs?.continuation === true
+
+    // Continuation OLs are layout-generated wrappers whose first LI marker
+    // must be hidden (CSS hides it via ::marker).  Use list-style-type: none
+    // so no marker renders by default; CSS will restore markers for any
+    // subsequently-lifted LIs (e.g. when user presses Enter on an empty sub-item).
+    const effectiveStyle = isContinuation ? 'none' : listStyleType
+
     // Merge attributes, but override with our computed listStyleType
     // This ensures we use the node's actual stored value, not HTMLAttributes
     return [
       'ol',
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
-        style: `list-style-type: ${listStyleType};`,
+        style: `list-style-type: ${effectiveStyle};`,
         'data-list-style': listStyleType,
       }),
       0,
