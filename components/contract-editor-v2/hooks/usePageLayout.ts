@@ -98,6 +98,7 @@ export function usePageLayout(
   const rafRef = useRef<number>(0)
   const isLayingOutRef = useRef(false)
   const lastSplitRef = useRef<{ pos: number; docSize: number } | null>(null)
+  const overflowedPagesRef = useRef(new Set<number>())
   const [pageCount, setPageCount] = useState(1)
 
   const measure = useCallback(() => {
@@ -156,17 +157,31 @@ export function usePageLayout(
           if (r.bottom > contentBottom) contentBottom = r.bottom
         }
 
-        // Height of first block on next page
+        // Margin-bottom of the last child on the current page
+        let lastChildMarginBottom = 0
+        if (children.length > 0) {
+          const lastChild = children[children.length - 1] as HTMLElement
+          lastChildMarginBottom = Number.parseFloat(window.getComputedStyle(lastChild).marginBottom || '0') || 0
+        }
+
+        // Height + margin-top of first block on next page
         const nextChildren = nextPageEl.children
         let firstBlockHeight = 0
+        let firstBlockMarginTop = 0
         for (let i = 0; i < nextChildren.length; i++) {
-          firstBlockHeight = (nextChildren[i] as HTMLElement).getBoundingClientRect().height
+          const el = nextChildren[i] as HTMLElement
+          firstBlockHeight = el.getBoundingClientRect().height
+          firstBlockMarginTop = Number.parseFloat(window.getComputedStyle(el).marginTop || '0') || 0
           break
         }
         if (firstBlockHeight === 0) return false
 
-        // tiny buffer to avoid oscillation
-        return contentBottom + firstBlockHeight <= bodyBottomY - 2
+        // CSS margin collapsing: the gap between adjacent blocks =
+        // max(lastChild.marginBottom, newBlock.marginTop).
+        // getBoundingClientRect doesn't include margins, so we must add this gap.
+        const marginGap = Math.max(lastChildMarginBottom, firstBlockMarginTop)
+
+        return contentBottom + marginGap + firstBlockHeight <= bodyBottomY - 2
       }
 
       const findNextPageOffset = (doc: PMNode, pageType: NodeType, targetIndex: number): number => {
@@ -210,9 +225,74 @@ export function usePageLayout(
         return true
       }
 
+      // ── Renumber ordered lists ─────────────────────────────────────────
+      // Each numbered section (I, II, III…) is a separate OL node with its
+      // own `start` attribute.  When items are added/removed, subsequent OLs
+      // need their `start` recalculated so numbering stays continuous.
+      {
+        const { doc } = view.state
+        const schemaNodes = view.state.schema.nodes
+        const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+        const pageType = doc.type.schema.nodes.page
+
+        if (orderedListType) {
+          // Collect all top-level OLs across pages, grouped by listStyleType
+          const olsByStyle = new Map<string, Array<{ pos: number; node: PMNode }>>()
+
+          doc.forEach((pageNode, pageOffset) => {
+            if (pageNode.type !== pageType) return
+            let offset = pageOffset + 1
+            for (let i = 0; i < pageNode.childCount; i++) {
+              const child = pageNode.child(i)
+              if (child.type === orderedListType) {
+                const style = (child.attrs?.listStyleType as string) || 'decimal'
+                if (!olsByStyle.has(style)) olsByStyle.set(style, [])
+                olsByStyle.get(style)!.push({ pos: offset, node: child })
+              }
+              offset += child.nodeSize
+            }
+          })
+
+          // For each style group, fix start values where they diverge
+          let tr = view.state.tr
+          let needsDispatch = false
+
+          for (const [, ols] of olsByStyle) {
+            if (ols.length <= 1) continue
+
+            // The first OL's start is the anchor for the sequence
+            let expectedStart = (ols[0].node.attrs?.start as number) ?? 1
+            expectedStart += ols[0].node.childCount
+
+            for (let i = 1; i < ols.length; i++) {
+              const { pos, node } = ols[i]
+              const currentStart = (node.attrs?.start as number) ?? 1
+
+              if (currentStart !== expectedStart) {
+                tr.setNodeMarkup(tr.mapping.map(pos), undefined, {
+                  ...node.attrs,
+                  start: expectedStart,
+                })
+                needsDispatch = true
+              }
+
+              expectedStart += node.childCount
+            }
+          }
+
+          if (needsDispatch) {
+            tr.setMeta(layoutMetaKey, true)
+            view.dispatch(tr)
+          }
+        }
+      }
+
       // ── Phase 1: push overflowing blocks forward ─────────────────────────
       let moves = 0
       let didMutate = true
+      // Note: overflowedPagesRef is NOT cleared here — it persists across
+      // measure() calls to prevent Phase 2 from undoing Phase 1's pushes.
+      // It is cleared only on user edits (in the onUpdate handler).
 
       while (didMutate && moves < MAX_MOVES) {
         didMutate = false
@@ -379,8 +459,97 @@ export function usePageLayout(
               'liBots=', Array.from(liElements).map((li, i) => ({ i, bot: (li as HTMLElement).getBoundingClientRect().bottom })))
 
             if (overflowLiIdx === 0) {
+              // First list item overflows. Check if part of it is visible —
+              // if so, try to split inside it at a nested list boundary.
+              const firstLiEl = liElements[0] as HTMLElement
+              const firstLiRect = firstLiEl.getBoundingClientRect()
+
+              if (firstLiRect.top < bodyBottomY - 20) {
+                // Part of the li is visible. Look for nested <li> that overflows.
+                const nestedLis = firstLiEl.querySelectorAll('li')
+                let overflowNestedEl: HTMLElement | null = null
+                let overflowNestedIdx = -1
+
+                for (let n = 0; n < nestedLis.length; n++) {
+                  const nel = nestedLis[n] as HTMLElement
+                  if (nel.getBoundingClientRect().bottom > bodyBottomY + 0.5) {
+                    overflowNestedEl = nel
+                    overflowNestedIdx = n
+                    break
+                  }
+                }
+
+                console.log('[layout] LIST: first li partially visible. nestedLis=', nestedLis.length,
+                  'overflowNestedIdx=', overflowNestedIdx)
+
+                if (overflowNestedEl && overflowNestedIdx > 0) {
+                  // There's a nested li that overflows and at least one before it fits.
+                  // Split before it, opening up to the outer listItem level.
+                  try {
+                    const schemaNodes = view.state.schema.nodes
+                    const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+
+                    const nestedLiPos = view.posAtDOM(overflowNestedEl, 0)
+                    const $nested = view.state.doc.resolve(nestedLiPos)
+
+                    // Find the outermost OL depth (direct child of page)
+                    let outerOlDepth = -1
+                    const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
+                    const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
+                    for (let d = $nested.depth; d >= 1; d--) {
+                      const nt = $nested.node(d).type
+                      if ((orderedListType && nt === orderedListType) || (bulletListType && nt === bulletListType)) {
+                        outerOlDepth = d
+                      }
+                    }
+
+                    if (outerOlDepth >= 1) {
+                      const outerLiDepth = outerOlDepth + 1
+
+                      // Find the nested listItem depth
+                      let nestedLiDepth = -1
+                      for (let d = $nested.depth; d > outerLiDepth; d--) {
+                        if (listItemType && $nested.node(d).type === listItemType) {
+                          nestedLiDepth = d
+                          break
+                        }
+                      }
+
+                      if (nestedLiDepth >= 1) {
+                        const splitPos = $nested.before(nestedLiDepth)
+                        const splitDepth = nestedLiDepth - outerLiDepth
+                        const docSize = view.state.doc.content.size
+
+                        console.log('[layout] LIST: splitting inside first li. outerOlDepth=', outerOlDepth,
+                          'outerLiDepth=', outerLiDepth, 'nestedLiDepth=', nestedLiDepth,
+                          'splitPos=', splitPos, 'splitDepth=', splitDepth)
+
+                        if (
+                          splitDepth > 0 &&
+                          canSplit(view.state.doc, splitPos, splitDepth) &&
+                          (!lastSplitRef.current ||
+                            lastSplitRef.current.pos !== splitPos ||
+                            lastSplitRef.current.docSize !== docSize)
+                        ) {
+                          lastSplitRef.current = { pos: splitPos, docSize }
+                          const tr = view.state.tr.split(splitPos, splitDepth)
+                          tr.setMeta(layoutMetaKey, true)
+                          view.dispatch(tr)
+                          moves++
+                          didMutate = true
+                          return
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    console.log('[layout] LIST: nested split error:', e)
+                    // fall through
+                  }
+                }
+              }
+
               console.log('[layout] LIST: first li overflows, falling through to whole-block move')
-              // First list item already overflows — fall through to whole-block move
+              // Fall through to whole-block move
             } else if (overflowLiIdx > 0) {
               console.log('[layout] LIST: splitting before li', overflowLiIdx, 'and moving tail')
               // Split list before the overflowing <li> and move tail to next page
@@ -430,17 +599,41 @@ export function usePageLayout(
                       const originalStart = (originalListNode.attrs?.start as number) ?? 1
                       const nextStart = originalStart + overflowLiIdx
 
+                      console.log('[layout] OL numbering: originalStart=', originalStart,
+                        'overflowLiIdx=', overflowLiIdx, 'nextStart=', nextStart,
+                        'liDepth=', liDepth, 'listDepth=', listDepth,
+                        'splitPos=', splitPos)
+                      console.log('[layout] OL li items before split:',
+                        Array.from(liElements).map((li, i) => ({
+                          i,
+                          text: (li as HTMLElement).textContent?.slice(0, 40) || '[empty]',
+                        })))
+
                       const mapped = tr.mapping.map(splitPos, 1)
                       const $mapped = tr.doc.resolve(mapped)
 
+                      console.log('[layout] OL mapped pos=', mapped, '$mapped.depth=', $mapped.depth,
+                        'nodes:', Array.from({ length: $mapped.depth + 1 }, (_, i) => $mapped.node(i).type.name))
+
+                      let setMarkupDone = false
                       for (let d = $mapped.depth; d >= 1; d--) {
                         if ($mapped.node(d).type === orderedListType) {
-                          tr.setNodeMarkup($mapped.before(d), undefined, {
-                            ...$mapped.node(d).attrs,
+                          const targetPos = $mapped.before(d)
+                          const targetNode = $mapped.node(d)
+                          console.log('[layout] OL setNodeMarkup at depth=', d, 'pos=', targetPos,
+                            'currentAttrs=', JSON.stringify(targetNode.attrs),
+                            'newStart=', nextStart,
+                            'tailChildCount=', targetNode.childCount)
+                          tr.setNodeMarkup(targetPos, undefined, {
+                            ...targetNode.attrs,
                             start: nextStart,
                           })
+                          setMarkupDone = true
                           break
                         }
+                      }
+                      if (!setMarkupDone) {
+                        console.log('[layout] OL WARNING: could not find orderedList in $mapped ancestry!')
                       }
                     }
 
@@ -460,6 +653,16 @@ export function usePageLayout(
                     if (tailListDepth >= 1) {
                       const tailListNode = $m.node(tailListDepth)
                       const tailListPos = $m.before(tailListDepth)
+
+                      console.log('[layout] MOVE tail: tailListDepth=', tailListDepth,
+                        'tailListPos=', tailListPos,
+                        'tailListNode.type=', tailListNode.type.name,
+                        'tailListNode.attrs=', JSON.stringify(tailListNode.attrs),
+                        'tailListNode.childCount=', tailListNode.childCount,
+                        'tailItems=', Array.from({ length: tailListNode.childCount }, (_, i) => {
+                          const child = tailListNode.child(i)
+                          return { i, type: child.type.name, text: child.textContent?.slice(0, 40) || '[empty]' }
+                        }))
 
                       // Delete tail list from current page
                       tr.delete(tailListPos, tailListPos + tailListNode.nodeSize)
@@ -484,8 +687,10 @@ export function usePageLayout(
 
                       if (currentPagePos >= 0) {
                         if (nextPagePos >= 0) {
+                          console.log('[layout] INSERT tail into existing next page at pos=', nextPagePos + 1)
                           tr.insert(nextPagePos + 1, tailListNode)
                         } else {
+                          console.log('[layout] INSERT tail into NEW page at pos=', currentPageEnd)
                           const newPage = pt.create(null, tailListNode)
                           tr.insert(currentPageEnd, newPage)
                         }
@@ -556,6 +761,20 @@ export function usePageLayout(
             'type=', pageNode.child(lastChildIdx).type.name,
             'overflowIdx=', overflowIdx, 'overflowTag=', overflowEl?.tagName)
 
+          // DEBUG: Log start attrs for ALL OL children on this page
+          console.log('[layout] FALLBACK page OL starts:',
+            JSON.stringify(Array.from({ length: pageNode.childCount }, (_, i) => {
+              const child = pageNode.child(i)
+              return {
+                i,
+                type: child.type.name,
+                start: child.attrs?.start,
+                listStyleType: child.attrs?.listStyleType,
+                childCount: child.childCount,
+                text: child.textContent?.slice(0, 50) || '[empty]',
+              }
+            })))
+
           // If overflow occurs in the middle of the page, first peel off trailing blocks.
           // This makes the overflowing block eventually become the last child, which
           // allows paragraph/list splitting logic to apply cleanly and prevents thrash.
@@ -571,11 +790,15 @@ export function usePageLayout(
           const blockEnd = blockStart + blockToMove.nodeSize
 
           didMutate = moveBlockToNextPage(blockToMove, blockStart, blockEnd, pageOffset, pageNode, pageIndex)
-          if (didMutate) moves++
+          if (didMutate) {
+            moves++
+            overflowedPagesRef.current.add(pageIndex)
+          }
           pageIndex++
         })
       }
 
+      console.log('[layout] Phase1 done. moves=', moves)
       lastSplitRef.current = null
 
       // ── Phase 2: pull blocks back to fill pages ──────────────────────────
@@ -604,6 +827,10 @@ export function usePageLayout(
           if (!pageDom || !nextDom) continue
           if (!pageDom.classList.contains('pm-page') || !nextDom.classList.contains('pm-page')) continue
 
+          // Skip pages that pushed blocks out in Phase 1 — pulling back
+          // to these pages would undo the push and cause oscillation.
+          if (overflowedPagesRef.current.has(i)) continue
+
           if (!canPullBlock(pageDom, nextDom)) continue
           if (nextNode.childCount === 0) continue
 
@@ -611,6 +838,10 @@ export function usePageLayout(
           const from = nextOffset + 1
           const to = from + firstBlock.nodeSize
           const insertPos = pageOffset + pageNode.nodeSize - 1
+
+          console.log('[layout] Phase2 PULL block from page', i + 1, 'to page', i,
+            'type=', firstBlock.type.name, 'start=', firstBlock.attrs?.start,
+            'text=', firstBlock.textContent?.slice(0, 50))
 
           const tr = view.state.tr
           tr.delete(from, to)
@@ -686,6 +917,8 @@ export function usePageLayout(
 
     const onUpdate = ({ transaction }: { transaction: any }) => {
       if (transaction?.getMeta?.(layoutMetaKey)) return
+      // User edit — clear overflow tracking so Phase 2 can make fresh decisions
+      overflowedPagesRef.current.clear()
       schedule()
     }
 
