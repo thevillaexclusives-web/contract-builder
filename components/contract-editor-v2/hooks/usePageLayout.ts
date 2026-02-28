@@ -292,168 +292,10 @@ export function usePageLayout(
             }
           }
 
-          // ── Handle trailing empty list item ─────────────────────────────────
-          // If the last block is a list ending with an empty <li> (from pressing
-          // Enter at the end of a list near the page boundary):
-          //   - If that empty <li> overflows: split the list before it so the
-          //     tail (containing the empty item) moves to the next page.
-          //   - If it does NOT overflow (fits on page): delete it as cruft.
-          if (
-            overflowIdx === lastChildIdx &&
-            overflowEl &&
-            (overflowEl.tagName.toLowerCase() === 'ol' || overflowEl.tagName.toLowerCase() === 'ul')
-          ) {
-            const allLis = overflowEl.querySelectorAll(':scope > li')
-            if (allLis.length > 1) {
-              const lastLi = allLis[allLis.length - 1] as HTMLElement
-              if (isEmptyListItemDom(lastLi)) {
-                try {
-                  const bodyBottomY = getBodyBottomY(pageDom)
-                  const lastLiOverflows = lastLi.getBoundingClientRect().bottom > bodyBottomY + 0.5
-
-                  const liPosInside = view.posAtDOM(lastLi, 0)
-                  const $li = view.state.doc.resolve(liPosInside)
-
-                  const schemaNodes = view.state.schema.nodes
-                  const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
-
-                  let liDepth = -1
-                  for (let d = $li.depth; d >= 1; d--) {
-                    if (listItemType && $li.node(d).type === listItemType) {
-                      liDepth = d
-                      break
-                    }
-                  }
-
-                  if (liDepth >= 1) {
-                    if (lastLiOverflows) {
-                      // Split the list before the empty <li>, then move the
-                      // tail list to the next page — all in one transaction.
-                      const orderedListType = schemaNodes.orderedList ?? schemaNodes.ordered_list
-                      const bulletListType = schemaNodes.bulletList ?? schemaNodes.bullet_list
-
-                      let listDepth = -1
-                      for (let d = liDepth - 1; d >= 1; d--) {
-                        const t = $li.node(d).type
-                        if ((orderedListType && t === orderedListType) || (bulletListType && t === bulletListType)) {
-                          listDepth = d
-                          break
-                        }
-                      }
-
-                      const splitPos = $li.before(liDepth)
-                      const docSize = view.state.doc.content.size
-
-                      if (
-                        canSplit(view.state.doc, splitPos, 1) &&
-                        (!lastSplitRef.current ||
-                          lastSplitRef.current.pos !== splitPos ||
-                          lastSplitRef.current.docSize !== docSize)
-                      ) {
-                        lastSplitRef.current = { pos: splitPos, docSize }
-                        const tr = view.state.tr.split(splitPos, 1)
-
-                        // Preserve ordered-list start on the tail list
-                        if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
-                          const originalListNode = $li.node(listDepth)
-                          const originalStart = (originalListNode.attrs?.start as number) ?? 1
-                          const splitIndex = allLis.length - 1
-                          const nextStart = originalStart + splitIndex
-
-                          const mapped = tr.mapping.map(splitPos, 1)
-                          const $mapped = tr.doc.resolve(mapped)
-
-                          for (let d = $mapped.depth; d >= 1; d--) {
-                            if ($mapped.node(d).type === orderedListType) {
-                              tr.setNodeMarkup($mapped.before(d), undefined, {
-                                ...$mapped.node(d).attrs,
-                                start: nextStart,
-                              })
-                              break
-                            }
-                          }
-                        }
-
-                        // Move the tail list to the next page in the same transaction
-                        const mappedPos = tr.mapping.map(splitPos, 1)
-                        const $m = tr.doc.resolve(mappedPos)
-
-                        // Find the tail list node (ordered/bullet) at/above mappedPos
-                        let tailListDepth = -1
-                        for (let d = $m.depth; d >= 1; d--) {
-                          const nType = $m.node(d).type
-                          if ((orderedListType && nType === orderedListType) || (bulletListType && nType === bulletListType)) {
-                            tailListDepth = d
-                            break
-                          }
-                        }
-
-                        if (tailListDepth >= 1) {
-                          const tailListNode = $m.node(tailListDepth)
-                          const tailListPos = $m.before(tailListDepth)
-
-                          // Delete tail list from current page location
-                          tr.delete(tailListPos, tailListPos + tailListNode.nodeSize)
-
-                          // Find page boundaries in the UPDATED tr.doc
-                          const pt = tr.doc.type.schema.nodes.page
-                          let currentPagePos = -1
-                          let currentPageEnd = -1
-                          let nextPagePos = -1
-
-                          let scanIdx = 0
-                          tr.doc.forEach((n, o) => {
-                            if (n.type !== pt) return
-                            if (scanIdx === pageIndex) {
-                              currentPagePos = o
-                              currentPageEnd = o + n.nodeSize
-                            } else if (scanIdx === pageIndex + 1) {
-                              nextPagePos = o
-                            }
-                            scanIdx++
-                          })
-
-                          if (currentPagePos >= 0) {
-                            if (nextPagePos >= 0) {
-                              // Insert into existing next page at the beginning
-                              tr.insert(nextPagePos + 1, tailListNode)
-                            } else {
-                              // Create a new page containing the tail list
-                              const newPage = pt.create(null, tailListNode)
-                              tr.insert(currentPageEnd, newPage)
-                            }
-                          }
-                        }
-
-                        tr.setMeta(layoutMetaKey, true)
-                        view.dispatch(tr)
-                        moves++
-                        didMutate = true
-                        return
-                      }
-                    } else {
-                      // Empty <li> fits on page — delete it as cruft.
-                      const from = $li.before(liDepth)
-                      const to = from + $li.node(liDepth).nodeSize
-                      const tr = view.state.tr.delete(from, to)
-                      tr.setMeta(layoutMetaKey, true)
-                      view.dispatch(tr)
-                      moves++
-                      didMutate = true
-                      return
-                    }
-                  }
-                } catch {
-                  // fall through to list split / whole-block move
-                }
-              }
-            }
-          }
-
-          // ── List split (optional) ─────────────────────────────────────────
-          // Only attempt to split lists when the LIST itself is the last block on the page.
-          // If overflow happens earlier in the page, we first move trailing blocks (handled by the
-          // whole-block move fallback) until the overflow block becomes last. This avoids thrash.
+          // ── List overflow handler ──────────────────────────────────────────
+          // If the last block on the page is a list (ol/ul) and ANY list item
+          // overflows bodyBottom, split the list before that item and move the
+          // tail to the next page — all in one transaction.
           if (
             overflowEl &&
             overflowIdx === lastChildIdx &&
@@ -462,22 +304,21 @@ export function usePageLayout(
             const bodyBottomY = getBodyBottomY(pageDom)
             const liElements = overflowEl.querySelectorAll(':scope > li')
 
-            let splitLiIdx = -1
+            // Find the first <li> whose bottom exceeds the page body
+            let overflowLiIdx = -1
             for (let li = 0; li < liElements.length; li++) {
               if ((liElements[li] as HTMLElement).getBoundingClientRect().bottom > bodyBottomY + 0.5) {
-                splitLiIdx = li
+                overflowLiIdx = li
                 break
               }
             }
 
-            // If the FIRST list item already overflows the page body, there is no valid place
-            // to split "before" it. In that case we fall through to the whole-block move, which
-            // moves the entire list to the next page (stable behavior, no giant jumps).
-            if (splitLiIdx === 0) {
-              // fall through
-            } else if (splitLiIdx > 0) {
+            if (overflowLiIdx === 0) {
+              // First list item already overflows — fall through to whole-block move
+            } else if (overflowLiIdx > 0) {
+              // Split list before the overflowing <li> and move tail to next page
               try {
-                const liEl = liElements[splitLiIdx] as HTMLElement
+                const liEl = liElements[overflowLiIdx] as HTMLElement
                 const liPosInside = view.posAtDOM(liEl, 0)
                 const $li = view.state.doc.resolve(liPosInside)
 
@@ -516,11 +357,11 @@ export function usePageLayout(
                     lastSplitRef.current = { pos: splitPos, docSize }
                     const tr = view.state.tr.split(splitPos, 1)
 
-                    // Ordered-list numbering continuity
+                    // Preserve ordered-list start on the tail list
                     if (overflowEl.tagName.toLowerCase() === 'ol' && orderedListType && listDepth >= 1) {
                       const originalListNode = $li.node(listDepth)
                       const originalStart = (originalListNode.attrs?.start as number) ?? 1
-                      const nextStart = originalStart + splitLiIdx
+                      const nextStart = originalStart + overflowLiIdx
 
                       const mapped = tr.mapping.map(splitPos, 1)
                       const $mapped = tr.doc.resolve(mapped)
@@ -536,6 +377,54 @@ export function usePageLayout(
                       }
                     }
 
+                    // Move the tail list to the next page in the same transaction
+                    const mappedPos = tr.mapping.map(splitPos, 1)
+                    const $m = tr.doc.resolve(mappedPos)
+
+                    let tailListDepth = -1
+                    for (let d = $m.depth; d >= 1; d--) {
+                      const nType = $m.node(d).type
+                      if ((orderedListType && nType === orderedListType) || (bulletListType && nType === bulletListType)) {
+                        tailListDepth = d
+                        break
+                      }
+                    }
+
+                    if (tailListDepth >= 1) {
+                      const tailListNode = $m.node(tailListDepth)
+                      const tailListPos = $m.before(tailListDepth)
+
+                      // Delete tail list from current page
+                      tr.delete(tailListPos, tailListPos + tailListNode.nodeSize)
+
+                      // Find page boundaries in the updated tr.doc
+                      const pt = tr.doc.type.schema.nodes.page
+                      let currentPagePos = -1
+                      let currentPageEnd = -1
+                      let nextPagePos = -1
+
+                      let scanIdx = 0
+                      tr.doc.forEach((n, o) => {
+                        if (n.type !== pt) return
+                        if (scanIdx === pageIndex) {
+                          currentPagePos = o
+                          currentPageEnd = o + n.nodeSize
+                        } else if (scanIdx === pageIndex + 1) {
+                          nextPagePos = o
+                        }
+                        scanIdx++
+                      })
+
+                      if (currentPagePos >= 0) {
+                        if (nextPagePos >= 0) {
+                          tr.insert(nextPagePos + 1, tailListNode)
+                        } else {
+                          const newPage = pt.create(null, tailListNode)
+                          tr.insert(currentPageEnd, newPage)
+                        }
+                      }
+                    }
+
                     tr.setMeta(layoutMetaKey, true)
                     view.dispatch(tr)
                     moves++
@@ -545,6 +434,41 @@ export function usePageLayout(
                 }
               } catch {
                 // fall through to whole-block move
+              }
+            } else {
+              // No individual <li> overflows — cleanup trailing empty <li> if present
+              if (liElements.length > 1) {
+                const lastLi = liElements[liElements.length - 1] as HTMLElement
+                if (isEmptyListItemDom(lastLi)) {
+                  try {
+                    const liPosInside = view.posAtDOM(lastLi, 0)
+                    const $li = view.state.doc.resolve(liPosInside)
+
+                    const schemaNodes = view.state.schema.nodes
+                    const listItemType = schemaNodes.listItem ?? schemaNodes.list_item
+
+                    let liDepth = -1
+                    for (let d = $li.depth; d >= 1; d--) {
+                      if (listItemType && $li.node(d).type === listItemType) {
+                        liDepth = d
+                        break
+                      }
+                    }
+
+                    if (liDepth >= 1) {
+                      const from = $li.before(liDepth)
+                      const to = from + $li.node(liDepth).nodeSize
+                      const tr = view.state.tr.delete(from, to)
+                      tr.setMeta(layoutMetaKey, true)
+                      view.dispatch(tr)
+                      moves++
+                      didMutate = true
+                      return
+                    }
+                  } catch {
+                    // fall through
+                  }
+                }
               }
             }
           }
