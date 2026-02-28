@@ -1,6 +1,6 @@
 // TipTap and editor types
 
-import { JSONContent } from '@tiptap/core'
+import type { JSONContent, Editor } from '@tiptap/core'
 
 export type EditorMode = 'template' | 'contract' | 'readonly'
 
@@ -16,6 +16,7 @@ export interface EditorProps {
   footerContent?: JSONContent
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
+  onActiveEditorChange?: (editor: Editor | null) => void
 }
 
 export interface EditorRef {

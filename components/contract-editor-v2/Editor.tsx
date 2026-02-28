@@ -40,6 +40,7 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       footerContent,
       onHeaderChange,
       onFooterChange,
+      onActiveEditorChange,
     },
     ref
   ) {
@@ -221,6 +222,17 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
       }),
     }))
 
+    // Compute active editor (body, header, or footer) — safe when editor is null
+    const activeEditor =
+      activeRegion === 'header' ? headerEditorRef.current :
+      activeRegion === 'footer' ? footerEditorRef.current :
+      editor
+
+    // Report active editor to parent (for externally-rendered toolbar)
+    useEffect(() => {
+      onActiveEditorChange?.(activeEditor)
+    }, [activeEditor, onActiveEditorChange])
+
     if (!editor) {
       return (
         <div className="border rounded-lg p-8 text-center text-muted-foreground">
@@ -228,11 +240,6 @@ const Editor = forwardRef<EditorRef, EditorProps & { showToolbar?: boolean }>(
         </div>
       )
     }
-
-    const activeEditor =
-      activeRegion === 'header' ? headerEditorRef.current :
-      activeRegion === 'footer' ? footerEditorRef.current :
-      editor
 
     return (
       <div className={className}>

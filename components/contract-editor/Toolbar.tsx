@@ -15,6 +15,8 @@ import {
   Undo,
   Redo,
   Table,
+  IndentIncrease,
+  IndentDecrease,
 } from 'lucide-react'
 import type { EditorMode } from '@/types/editor'
 import ListStyleDropdown from './ListStyleDropdown'
@@ -117,6 +119,14 @@ export default function Toolbar({ editor, mode = 'template' }: ToolbarProps) {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   }, [editor])
 
+  const handleIndent = useCallback(() => {
+    editor?.chain().focus().sinkListItem('listItem').run()
+  }, [editor])
+
+  const handleOutdent = useCallback(() => {
+    editor?.chain().focus().liftListItem('listItem').run()
+  }, [editor])
+
   const handleUndo = useCallback(() => {
     editor?.chain().focus().undo().run()
   }, [editor])
@@ -145,6 +155,8 @@ export default function Toolbar({ editor, mode = 'template' }: ToolbarProps) {
     blockquote: editor.isActive('blockquote'),
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
+    canIndent: editor.can().sinkListItem('listItem'),
+    canOutdent: editor.can().liftListItem('listItem'),
   }
 
   return (
@@ -174,6 +186,16 @@ export default function Toolbar({ editor, mode = 'template' }: ToolbarProps) {
 
       {/* Text Alignment */}
       <TextAlignDropdown editor={editor} />
+
+      <div className="w-px h-6 bg-gray-300 mx-1" />
+
+      {/* Indent / Outdent */}
+      <ToolbarButton onClick={handleOutdent} disabled={!activeStates.canOutdent} title="Decrease Indent (Shift+Tab)">
+        <IndentDecrease className="w-4 h-4" />
+      </ToolbarButton>
+      <ToolbarButton onClick={handleIndent} disabled={!activeStates.canIndent} title="Increase Indent (Tab)">
+        <IndentIncrease className="w-4 h-4" />
+      </ToolbarButton>
 
       {!isContract && (
         <>

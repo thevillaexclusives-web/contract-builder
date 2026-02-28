@@ -50,7 +50,7 @@ export default function Header({ userEmail, userName }: HeaderProps) {
           {/* Left side - Brand */}
           <div className="flex items-center">
             <h1 className="text-lg sm:text-xl font-medium text-gray-300">
-              Contract Builder V2
+              Contract Builder
             </h1>
           </div>
 

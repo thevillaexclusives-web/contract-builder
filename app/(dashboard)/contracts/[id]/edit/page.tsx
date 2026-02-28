@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Editor from '@/components/contract-editor-v2/Editor'
-import type { JSONContent } from '@tiptap/core'
+import Toolbar from '@/components/contract-editor/Toolbar'
+import type { JSONContent, Editor as TiptapEditor } from '@tiptap/core'
 import type { Contract } from '@/types/contract'
 import { parseContent, serializeContent } from '@/lib/content-shape'
 import { Save, ArrowLeft, CheckCircle2, AlertCircle, Loader2, FileDown, RefreshCw } from 'lucide-react'
@@ -57,6 +58,7 @@ export default function ContractEditPage() {
   const [templateName, setTemplateName] = useState<string | null>(null)
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [activeEditor, setActiveEditor] = useState<TiptapEditor | null>(null)
 
   // Auto-save debounce
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -325,139 +327,105 @@ export default function ContractEditPage() {
   const isFinalized = contract.status === 'final'
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
-      {/* Header */}
-      <div className="mb-6">
-        <Link
-          href="/contracts"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Contracts
-        </Link>
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <input
-                type="text"
-                value={contractName}
-                onChange={(e) => setContractName(e.target.value)}
-                placeholder="Contract Name"
-                disabled={isFinalized}
-                className="text-3xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0 w-full disabled:opacity-50"
-              />
-              {isFinalized && (
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  Finalized
-                </span>
+    <div>
+      {/* Sticky header + toolbar */}
+      <div className="sticky top-0 z-50 bg-white border-b shadow-sm">
+        {/* Title row */}
+        <div className="flex items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <Link
+              href="/contracts"
+              className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
+              title="Back to Contracts"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={contractName}
+                  onChange={(e) => setContractName(e.target.value)}
+                  placeholder="Contract Name"
+                  disabled={isFinalized}
+                  className="text-lg font-semibold bg-transparent border-none outline-none focus:ring-0 p-0 w-full disabled:opacity-50 truncate"
+                />
+                {isFinalized && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium flex-shrink-0">
+                    Finalized
+                  </span>
+                )}
+              </div>
+              {templateName && (
+                <p className="text-xs text-gray-400 truncate">
+                  Based on: <span className="font-medium text-gray-500">{templateName}</span>
+                </p>
               )}
             </div>
-            <input
-              type="text"
-              value={contractDescription}
-              onChange={(e) => setContractDescription(e.target.value)}
-              placeholder="Add a description (optional)"
-              disabled={isFinalized}
-              className="text-sm text-gray-500 bg-transparent border-none outline-none focus:ring-0 p-0 w-full disabled:opacity-50"
-            />
-            {templateName && (
-              <p className="text-xs text-gray-400 mt-1">
-                Based on template: <span className="font-medium text-gray-500">{templateName}</span>
-              </p>
-            )}
           </div>
 
           {/* Save Status & Actions */}
-          <div className="flex items-center gap-3">
-     
+          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
             {saveStatus === 'saved' && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
+              <div className="flex items-center gap-1 text-sm text-green-600">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Changes saved</span>
+                <span>Saved</span>
               </div>
             )}
-            
             {saveStatus === 'error' && (
-              <div className="flex items-center gap-2 text-sm text-red-600">
+              <div className="flex items-center gap-1 text-sm text-red-600">
                 <AlertCircle className="w-4 h-4" />
-                <span>Save failed</span>
+                <span>Error</span>
               </div>
             )}
 
             {!isFinalized && (
               <button
                 onClick={handleManualSave}
-                className="px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={saveStatus === 'saving'}
+                title="Save"
               >
                 {saveStatus === 'saving' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save
-                  </>
+                  <Save className="w-4 h-4" />
                 )}
               </button>
             )}
 
-            {/**!isFinalized && contract?.template_id && (
-              <button
-                onClick={() => setShowSyncModal(true)}
-                className="px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isSyncing}
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Sync with Template
-                  </>
-                )}
-              </button>
-            ) **/}
-
             <button
               onClick={handleExportPDF}
               disabled={isExporting}
-              className="px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Export PDF"
             >
               {isExporting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Exporting...
-                </>
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <FileDown className="w-4 h-4" />
-                  Export PDF
-                </>
+                <FileDown className="w-4 h-4" />
               )}
             </button>
           </div>
         </div>
+
+        {/* Toolbar */}
+        {!isFinalized && <Toolbar editor={activeEditor} mode="contract" />}
       </div>
 
       {/* Editor */}
-      <div className="space-y-4">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         <Editor
           content={content}
           mode="contract"
           onChange={handleContentChange}
           editable={!isFinalized}
-          showToolbar={!isFinalized}
+          showToolbar={false}
           headerContent={headerContent}
           footerContent={footerContent}
           onHeaderChange={setHeaderContent}
           onFooterChange={setFooterContent}
+          onActiveEditorChange={setActiveEditor}
         />
       </div>
 
