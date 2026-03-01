@@ -160,7 +160,7 @@ export default function Toolbar({ editor, mode = 'template' }: ToolbarProps) {
   }
 
   return (
-    <div className="border-b p-2 flex flex-wrap items-center gap-1 bg-gray-50">
+    <div className="border-b p-2 flex flex-wrap items-center justify-center gap-1 bg-gray-50">
       {/* Text Formatting */}
       <ToolbarButton onClick={handleBold} isActive={activeStates.bold} title="Bold">
         <Bold className="w-4 h-4" />
