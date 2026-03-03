@@ -339,6 +339,36 @@ export function renderContractHtml(
       border-bottom: none !important;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* Continuation OL: layout-generated wrapper that preserves parent list nesting
+       across page breaks. The first LI is a structural wrapper (empty P + inner OL)
+       whose marker must be hidden. */
+    ol[data-continuation] {
+      margin-top: 0;
+    }
+    ol[data-continuation] > li:first-child > p:first-child {
+      margin: 0;
+      padding: 0;
+      height: 0;
+      overflow: hidden;
+      line-height: 0;
+    }
+    /* Restore correct list-style-type for non-first LIs (lifted items) */
+    ol[data-continuation][data-list-style="upper-roman"] > li:not(:first-child) {
+      list-style-type: upper-roman;
+    }
+    ol[data-continuation][data-list-style="lower-roman"] > li:not(:first-child) {
+      list-style-type: lower-roman;
+    }
+    ol[data-continuation][data-list-style="upper-alpha"] > li:not(:first-child) {
+      list-style-type: upper-alpha;
+    }
+    ol[data-continuation][data-list-style="lower-alpha"] > li:not(:first-child) {
+      list-style-type: lower-alpha;
+    }
+    ol[data-continuation][data-list-style="decimal"] > li:not(:first-child) {
+      list-style-type: decimal;
     }`
 
   // ── Detect page-node format (doc -> page+ -> block+) ────────────────────
