@@ -1,47 +1,49 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { User, LogOut, Building2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { User, LogOut, Building2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@/components/ui/dropdown-menu';
 
 interface HeaderProps {
-  userEmail?: string
-  userName?: string
+  userEmail?: string;
+  userName?: string;
 }
 
 export default function Header({ userEmail, userName }: HeaderProps) {
-  const [isMobile, setIsMobile] = useState(false)
-  const legacyAppUrl = process.env.NEXT_PUBLIC_LEGACY_APP_URL || 'https://app.thevillaexclusive.com'
+  const [isMobile, setIsMobile] = useState(false);
+  const legacyAppUrl =
+    process.env.NEXT_PUBLIC_LEGACY_APP_URL ||
+    'https://app.thevillaexclusive.com';
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    const supabase = createClient();
+    await supabase.auth.signOut();
     // Redirect to main legacy app after clearing session
-    window.location.href = legacyAppUrl
-  }
+    window.location.href = legacyAppUrl;
+  };
 
   const handleGoToPMS = () => {
-    window.location.href = `${legacyAppUrl}/v1/pms/dashboard`
-  }
+    window.location.href = `${legacyAppUrl}/properties`;
+  };
 
-  const displayName = userName || userEmail?.split('@')[0] || 'User'
+  const displayName = userName || userEmail?.split('@')[0] || 'User';
 
   return (
     <nav className="border-b bg-black">
@@ -106,5 +108,5 @@ export default function Header({ userEmail, userName }: HeaderProps) {
         </div>
       </div>
     </nav>
-  )
+  );
 }
