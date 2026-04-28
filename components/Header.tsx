@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { User, LogOut, Building2 } from 'lucide-react';
+import { User, LogOut, Building2, LayoutDashboard } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   DropdownMenu,
@@ -22,6 +22,7 @@ export default function Header({ userEmail, userName }: HeaderProps) {
   const legacyAppUrl =
     process.env.NEXT_PUBLIC_LEGACY_APP_URL ||
     'https://app.thevillaexclusive.com';
+  const salesDashboardUrl = `${legacyAppUrl}/v1/crm/leads`;
 
   useEffect(() => {
     const checkMobile = () => {
@@ -41,6 +42,10 @@ export default function Header({ userEmail, userName }: HeaderProps) {
 
   const handleGoToPMS = () => {
     window.location.href = `${legacyAppUrl}/properties`;
+  };
+
+  const handleGoToSalesDashboard = () => {
+    window.location.href = salesDashboardUrl;
   };
 
   const displayName = userName || userEmail?.split('@')[0] || 'User';
@@ -96,6 +101,10 @@ export default function Header({ userEmail, userName }: HeaderProps) {
                 <DropdownMenuItem onClick={handleGoToPMS}>
                   <Building2 className="w-4 h-4 mr-2" />
                   Property Management App
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleGoToSalesDashboard}>
+                  <LayoutDashboard className="w-4 h-4 mr-2" />
+                  Sales Dashboard
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>

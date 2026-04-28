@@ -515,8 +515,8 @@ export function usePageLayout(
                           }
                         }
                       }
-                    } catch {
-                      // fall through
+                    } catch (e) {
+                      console.log('[layout] NESTED-SPLIT: strategy1 error:', e)
                     }
                   }
                 }
